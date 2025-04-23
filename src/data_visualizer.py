@@ -171,6 +171,7 @@ class DataVisualizer:
         """
         Create a time series plot with subplots for all metrics related to the mother metric.
         Each subplot will have independent axes and its own limit lines if available.
+        Subplots are arranged in a 2-column grid layout.
         
         Args:
             strana_node (str): The stranaNodeName to plot
@@ -185,20 +186,30 @@ class DataVisualizer:
                (self.data['rmRiskMetricName'].isin(metrics))
         plot_data = self.data[mask].copy()
         
-        # Create figure with subplots
+        # Calculate number of rows needed for 2 columns
+        num_rows = (len(metrics) + 1) // 2  # Round up division
+        
+        # Create figure with subplots in 2 columns
         fig = make_subplots(
-            rows=len(metrics),
-            cols=1,
+            rows=num_rows,
+            cols=2,
             subplot_titles=[f"{metric}" for metric in metrics],
-            vertical_spacing=0.4,  # Increased from 0.1 to 0.2
+            vertical_spacing=0.2,  # Reduced spacing since we're using 2 columns
+            horizontal_spacing=0.15,
             shared_xaxes=False     # Independent x-axes
         )
         
-        # Calculate height based on number of metrics (minimum 400px)
-        height = max(300 * len(metrics), 400)
+        # Calculate height based on number of rows (minimum 400px)
+        height = max(250 * num_rows, 400)
+        # Set width based on height to maintain good aspect ratio
+        width = min(1200, height * 2)  # Cap width at 1200px
         
         # Add time series for each metric in separate subplots
         for idx, metric in enumerate(metrics, 1):
+            # Calculate row and column (1-based indexing)
+            row = (idx + 1) // 2
+            col = 2 if idx % 2 == 0 else 1
+            
             metric_data = plot_data[plot_data['rmRiskMetricName'] == metric].copy()
             metric_data = metric_data.sort_values('Date')
             
@@ -211,8 +222,8 @@ class DataVisualizer:
                     mode='lines+markers',
                     showlegend=False
                 ),
-                row=idx,
-                col=1
+                row=row,
+                col=col
             )
             
             # Add limit lines if they exist for this specific metric
@@ -230,8 +241,8 @@ class DataVisualizer:
                             x=0,
                             yanchor='bottom'
                         ),
-                        row=idx,
-                        col=1
+                        row=row,
+                        col=col
                     )
                 
                 if pd.notna(latest_data['limMinValue']):
@@ -245,18 +256,19 @@ class DataVisualizer:
                             x=0,
                             yanchor='top'
                         ),
-                        row=idx,
-                        col=1
+                        row=row,
+                        col=col
                     )
             
             # Add axis titles for each subplot
-            fig.update_xaxes(title_text="Date", row=idx, col=1)
-            fig.update_yaxes(title_text="Value", row=idx, col=1)
+            fig.update_xaxes(title_text="Date", row=row, col=col)
+            fig.update_yaxes(title_text="Value", row=row, col=col)
         
         # Update layout
         fig.update_layout(
             title=f"{strana_node} - {mother_metric} and Related Metrics Time Series",
             height=height,
+            width=width,
             showlegend=False,
             template="plotly_white"
         )
@@ -276,6 +288,7 @@ class DataVisualizer:
         """
         Create grouped bar plots for multiple mother metrics in the same stranaNode.
         Each mother metric and its related metrics will be in a separate subplot.
+        Subplots are arranged in a 2-column grid layout.
         
         Args:
             strana_node (str): The stranaNodeName to plot
@@ -283,19 +296,29 @@ class DataVisualizer:
             date (datetime, optional): Specific date to plot, defaults to latest
             output_file (str, optional): If provided, save the plot to this file
         """
-        # Create figure with subplots
+        # Calculate number of rows needed for 2 columns
+        num_rows = (len(mother_metrics) + 1) // 2  # Round up division
+        
+        # Create figure with subplots in 2 columns
         fig = make_subplots(
-            rows=len(mother_metrics),
-            cols=1,
+            rows=num_rows,
+            cols=2,
             subplot_titles=[f"{metric}" for metric in mother_metrics],
-            vertical_spacing=0.4  # Increased from 0.1 to 0.2
+            vertical_spacing=0.2,
+            horizontal_spacing=0.15
         )
         
-        # Calculate height based on number of metrics
-        height = max(300 * len(mother_metrics), 400)
+        # Calculate height based on number of rows
+        height = max(250 * num_rows, 400)
+        # Set width based on height to maintain good aspect ratio
+        width = min(1200, height * 2)  # Cap width at 1200px
         
         # Process each mother metric
         for idx, mother_metric in enumerate(mother_metrics, 1):
+            # Calculate row and column (1-based indexing)
+            row = (idx + 1) // 2
+            col = 2 if idx % 2 == 0 else 1
+            
             # Get all related metrics
             metrics = self.get_all_related_metrics(strana_node, mother_metric)
             
@@ -321,18 +344,19 @@ class DataVisualizer:
                     name=mother_metric,
                     showlegend=False
                 ),
-                row=idx,
-                col=1
+                row=row,
+                col=col
             )
             
             # Update axes
-            fig.update_xaxes(title_text="Metric", row=idx, col=1, tickangle=-45)
-            fig.update_yaxes(title_text="Value", row=idx, col=1)
+            fig.update_xaxes(title_text="Metric", row=row, col=col, tickangle=-45)
+            fig.update_yaxes(title_text="Value", row=row, col=col)
         
         # Update layout
         fig.update_layout(
             title=f"{strana_node} - Bar Plots ({date.strftime('%Y-%m-%d')})",
             height=height,
+            width=width,
             showlegend=False,
             template="plotly_white"
         )

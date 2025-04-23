@@ -20,11 +20,11 @@ def main():
         'FICRATG10JGB': {
             'metrics_config': [
                 {
-                    'mother_metrics': ['CredBpv'],
+                    'mother_metrics': ['CredBpv', 'BASISSensiByCurrencyByPillar'],
                     'plot_types': ['bar']
                 },
                 {
-                    'mother_metrics': ['SOVFuture'],
+                    'mother_metrics': ['SOVFuture','BASISSensiByCurrencyByPillar'],
                     'plot_types': ['time_series']
                 }
             ]
