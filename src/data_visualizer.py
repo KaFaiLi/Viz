@@ -74,6 +74,7 @@ class DataVisualizer:
     def get_all_related_metrics(self, strana_node: str, mother_metric: str) -> List[str]:
         """
         Get all metrics related to a mother metric, including sub-metrics with maturity/currency.
+        Case-insensitive matching is used to find related metrics.
         
         Args:
             strana_node (str): The stranaNodeName
@@ -85,17 +86,18 @@ class DataVisualizer:
         # Get all metrics for this stranaNode
         all_metrics = self.data[self.data['stranaNodeName'] == strana_node]['rmRiskMetricName'].unique()
         
-        # Find all metrics that start with the mother metric or contain it
-        related_metrics = [m for m in all_metrics if mother_metric in m]
+        # Find all metrics that contain the mother metric (case-insensitive)
+        related_metrics = [m for m in all_metrics if mother_metric.lower() in m.lower()]
         
         # Sort metrics by maturity/currency
         def sort_key(metric):
             maturity = self._extract_maturity(metric)
             currency = self._extract_currency(metric)
             
-            if metric == mother_metric:  # Mother metric goes last
-                return (float('inf'), '')
-            elif maturity:  # Sort by maturity first
+            # Put exact matches (ignoring case) first
+            if metric.lower() == mother_metric.lower():
+                return (0, '')
+            elif maturity:  # Then sort by maturity
                 return (1, self._convert_maturity_to_months(maturity))
             elif currency:  # Then by currency
                 return (2, currency)
