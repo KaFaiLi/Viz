@@ -4,6 +4,8 @@ from plotly.subplots import make_subplots
 import re
 from typing import Dict, List, Optional, Union, Tuple, Set
 from datetime import datetime
+# Import the rules
+from src.special_metrics_rules import special_metric_rules
 
 class DataVisualizer:
     def __init__(self, data: pd.DataFrame):
@@ -75,6 +77,7 @@ class DataVisualizer:
         """
         Get all metrics related to a mother metric, including sub-metrics with maturity/currency.
         Case-insensitive matching is used to find related metrics.
+        Applies filtering rules from special_metric_rules if defined.
         
         Args:
             strana_node (str): The stranaNodeName
@@ -87,8 +90,20 @@ class DataVisualizer:
         all_metrics = self.data[self.data['stranaNodeName'] == strana_node]['rmRiskMetricName'].unique()
         
         # Find all metrics that contain the mother metric (case-insensitive)
-        related_metrics = [m for m in all_metrics if mother_metric.lower() in m.lower()]
-        
+        base_related_metrics = [m for m in all_metrics if mother_metric.lower() in m.lower()]
+
+        # Apply special filtering rules if they exist for this mother_metric
+        related_metrics = base_related_metrics
+        if mother_metric in special_metric_rules:
+            rules = special_metric_rules[mother_metric]
+            include_pattern = rules.get("include_pattern")
+            exclude_pattern = rules.get("exclude_pattern")
+
+            if include_pattern:
+                related_metrics = [m for m in related_metrics if re.search(include_pattern, m, re.IGNORECASE)]
+            if exclude_pattern:
+                related_metrics = [m for m in related_metrics if not re.search(exclude_pattern, m, re.IGNORECASE)]
+
         # Sort metrics by maturity/currency
         def sort_key(metric):
             maturity = self._extract_maturity(metric)
@@ -126,7 +141,7 @@ class DataVisualizer:
         
         # Filter data for all metrics
         mask = (self.data['stranaNodeName'] == strana_node) & \
-               (self.data['rmRiskMetricName'].isin(metrics))
+               (self.data['consoMreMetricName'].isin(metrics))
         plot_data = self.data[mask].copy()
         
         # Use latest date if not specified
@@ -142,8 +157,8 @@ class DataVisualizer:
         # Add bars
         fig.add_trace(go.Bar(
             x=metrics,  # Use pre-sorted metrics list
-            y=plot_data.set_index('rmRiskMetricName').reindex(metrics)['consoValue'],
-            text=plot_data.set_index('rmRiskMetricName').reindex(metrics)['consoValue'].round(2),
+            y=plot_data.set_index('consoMreMetricName').reindex(metrics)['consoValue'],
+            text=plot_data.set_index('consoMreMetricName').reindex(metrics)['consoValue'].round(2),
             textposition='auto',
         ))
         
@@ -183,9 +198,12 @@ class DataVisualizer:
         
         # Filter data
         mask = (self.data['stranaNodeName'] == strana_node) & \
-               (self.data['rmRiskMetricName'].isin(metrics))
+               (self.data['consoMreMetricName'].isin(metrics))
         plot_data = self.data[mask].copy()
         
+        # Ensure the overall data for this plot is sorted by date before creating subplots
+        plot_data = plot_data.sort_values('Date')
+
         # Calculate number of rows needed for 2 columns
         num_rows = (len(metrics) + 1) // 2  # Round up division
         
@@ -193,7 +211,6 @@ class DataVisualizer:
         fig = make_subplots(
             rows=num_rows,
             cols=2,
-            subplot_titles=[f"{metric}" for metric in metrics],
             vertical_spacing=0.2,  # Reduced spacing since we're using 2 columns
             horizontal_spacing=0.15,
             shared_xaxes=False     # Independent x-axes
@@ -204,13 +221,16 @@ class DataVisualizer:
         # Set width based on height to maintain good aspect ratio
         width = min(1200, height * 2)  # Cap width at 1200px
         
+        subplot_annotations = [] # Initialize list for annotations
+
         # Add time series for each metric in separate subplots
         for idx, metric in enumerate(metrics, 1):
             # Calculate row and column (1-based indexing)
             row = (idx + 1) // 2
             col = 2 if idx % 2 == 0 else 1
             
-            metric_data = plot_data[plot_data['rmRiskMetricName'] == metric].copy()
+            metric_data = plot_data[plot_data['consoMreMetricName'] == metric].copy()
+            # This sort ensures points within *this* trace are ordered, complementing the global sort above
             metric_data = metric_data.sort_values('Date')
             
             # Add the time series
@@ -263,6 +283,30 @@ class DataVisualizer:
             # Add axis titles for each subplot
             fig.update_xaxes(title_text="Date", row=row, col=col)
             fig.update_yaxes(title_text="Value", row=row, col=col)
+
+            # --- Calculate annotation position using paper coordinates --- 
+            # Get subplot domain boundaries (approximate)
+            x_domain, y_domain = fig.get_subplot(row=row, col=col).xaxis.domain, fig.get_subplot(row=row, col=col).yaxis.domain
+
+            # Calculate center x position in paper coordinates
+            x_pos = (x_domain[0] + x_domain[1]) / 2
+
+            # Calculate y position slightly above the subplot in paper coordinates
+            y_pos = y_domain[1] + 0.02 # Adjust the offset (0.02) as needed 
+            # --- End annotation position calculation --- 
+
+            # Add subplot title annotation
+            subplot_annotations.append(dict(
+                text=f"<b>{metric}</b>",
+                xref="paper", # Reference the whole figure paper
+                yref="paper", # Reference the whole figure paper
+                x=x_pos, # Use calculated paper coordinate 
+                y=y_pos, # Use calculated paper coordinate
+                xanchor='center',
+                yanchor='bottom',
+                showarrow=False,
+                font=dict(size=14) # Adjust size as needed
+            ))
         
         # Update layout
         fig.update_layout(
@@ -270,7 +314,8 @@ class DataVisualizer:
             height=height,
             width=width,
             showlegend=False,
-            template="plotly_white"
+            template="plotly_white",
+            annotations=subplot_annotations # Add the annotations here
         )
         
         if output_file:
@@ -309,7 +354,7 @@ class DataVisualizer:
         )
         
         # Calculate height based on number of rows
-        height = max(250 * num_rows, 400)
+        height = max(300 * num_rows, 400)  # Increased height per row
         # Set width based on height to maintain good aspect ratio
         width = min(1200, height * 2)  # Cap width at 1200px
         
@@ -324,7 +369,7 @@ class DataVisualizer:
             
             # Filter data
             mask = (self.data['stranaNodeName'] == strana_node) & \
-                   (self.data['rmRiskMetricName'].isin(metrics))
+                   (self.data['consoMreMetricName'].isin(metrics))
             plot_data = self.data[mask].copy()
             
             # Use latest date if not specified
@@ -338,8 +383,8 @@ class DataVisualizer:
             fig.add_trace(
                 go.Bar(
                     x=metrics,  # Use pre-sorted metrics list
-                    y=plot_data.set_index('rmRiskMetricName').reindex(metrics)['consoValue'],
-                    text=plot_data.set_index('rmRiskMetricName').reindex(metrics)['consoValue'].round(2),
+                    y=plot_data.set_index('consoMreMetricName').reindex(metrics)['consoValue'],
+                    text=plot_data.set_index('consoMreMetricName').reindex(metrics)['consoValue'].round(2),
                     textposition='auto',
                     name=mother_metric,
                     showlegend=False
@@ -349,7 +394,7 @@ class DataVisualizer:
             )
             
             # Update axes
-            fig.update_xaxes(title_text="Metric", row=row, col=col, tickangle=-45)
+            fig.update_xaxes(title_text=None, row=row, col=col, tickangle=-90, automargin=True)
             fig.update_yaxes(title_text="Value", row=row, col=col)
         
         # Update layout
@@ -382,7 +427,7 @@ class VisualizationConfig:
         
         Args:
             strana_node (str): The stranaNodeName
-            metric_name (str): The rmRiskMetricName
+            metric_name (str): The consoMreMetricName
             plot_types (List[str]): List of plot types ('bar' and/or 'time_series')
         """
         self.plot_types[(strana_node, metric_name)] = plot_types
