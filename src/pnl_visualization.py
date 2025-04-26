@@ -6,13 +6,22 @@ import os
 def load_data(file_path):
     """Load and preprocess the PNL and income attribution data."""
     df = pd.read_csv(file_path)
+    
+    # Calculate cumulative sum for the final result
+    df['FINAL RESULT[LAST_FALSH].Daily_Cumulative'] = df['FINAL RESULT[LAST_FALSH].Daily'].cumsum()
+    
+    # Calculate cumulative sums for all attribution columns
+    for col in df.columns:
+        if '_L' in col and '.DtD' in col:
+            df[f'{col}_Cumulative'] = df[col].cumsum()
+    
     return df
 
 def identify_level_columns(df):
     """Identify columns by their level (L1, L2, etc.) and group them."""
     level_groups = {}
     for col in df.columns:
-        if '_L' in col and '.DtD' in col:
+        if '_L' in col and '.DtD' in col and not col.endswith('_Cumulative'):
             level = col.split('_L')[1].split('.')[0]
             if level not in level_groups:
                 level_groups[level] = []
@@ -27,7 +36,7 @@ def create_multi_level_visualization(df, level_groups, output_dir):
     fig = make_subplots(
         rows=num_levels, 
         cols=1,
-        subplot_titles=[f'Level {level}' for level in level_groups.keys()],
+        subplot_titles=[f'Level {level} - Cumulative Attribution' for level in level_groups.keys()],
         vertical_spacing=0.15,  # Increased spacing between subplots
         specs=[[{"secondary_y": True}] for _ in range(num_levels)]
     )
@@ -43,11 +52,13 @@ def create_multi_level_visualization(df, level_groups, output_dir):
         # Add stacked bars for each column in the level
         for col_idx, col in enumerate(columns):
             name = f"{col.split('_L')[0].strip()}"
+            cumulative_col = f'{col}_Cumulative'
+            
             fig.add_trace(
                 go.Bar(
                     name=name,
                     x=df['Context.AsOfDate'],
-                    y=df[col],
+                    y=df[cumulative_col],  # Use cumulative values
                     marker_color=colors[col_idx % len(colors)],
                     showlegend=True,
                     legendgroup=f"group{idx}",
@@ -58,12 +69,12 @@ def create_multi_level_visualization(df, level_groups, output_dir):
                 secondary_y=False,
             )
         
-        # Add line for final result
+        # Add line for cumulative final result
         fig.add_trace(
             go.Scatter(
-                name='Final Result',
+                name='Cumulative Final Result',
                 x=df['Context.AsOfDate'],
-                y=df['FINAL RESULT[LAST_FALSH].Daily'],
+                y=df['FINAL RESULT[LAST_FALSH].Daily_Cumulative'],  # Use cumulative values
                 line=dict(color='black', width=2),
                 mode='lines',
                 showlegend=True,
@@ -76,13 +87,13 @@ def create_multi_level_visualization(df, level_groups, output_dir):
         
         # Update axes labels for each subplot
         fig.update_xaxes(title_text="Date", row=idx, col=1)
-        fig.update_yaxes(title_text="Attribution Values", secondary_y=False, row=idx, col=1)
-        fig.update_yaxes(title_text="Final Result", secondary_y=True, row=idx, col=1)
+        fig.update_yaxes(title_text="Cumulative Attribution Values", secondary_y=False, row=idx, col=1)
+        fig.update_yaxes(title_text="Cumulative Final Result", secondary_y=True, row=idx, col=1)
     
     # Update layout
     height_per_subplot = 400
     fig.update_layout(
-        title='PNL Attribution - All Levels',
+        title='Cumulative PNL Attribution - All Levels',
         height=height_per_subplot * num_levels + 150,  # Additional space for title
         template='plotly_white',
         showlegend=True,
@@ -104,7 +115,7 @@ def create_multi_level_visualization(df, level_groups, output_dir):
     )
     
     # Save the figure
-    output_path = os.path.join(output_dir, 'pnl_attribution_all_levels.html')
+    output_path = os.path.join(output_dir, 'pnl_attribution_all_levels_cumulative.html')
     fig.write_html(output_path)
     return output_path
 
@@ -121,8 +132,8 @@ def update_dashboard_html(html_file, visualization_file):
         <div class="metrics-grid">
             <div class="metric-card">
                 <span class="metric-type time-series">Multi-Level Plot</span>
-                <span class="metric-name">PNL Attribution - All Levels</span>
-                <a href="{relative_path}" target="_blank" aria-label="View PNL Attribution All Levels"></a>
+                <span class="metric-name">Cumulative PNL Attribution - All Levels</span>
+                <a href="{relative_path}" target="_blank" aria-label="View Cumulative PNL Attribution All Levels"></a>
             </div>
         </div>
     </section>

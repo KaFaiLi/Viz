@@ -207,11 +207,14 @@ class DataVisualizer:
         # Calculate number of rows needed for 2 columns
         num_rows = (len(metrics) + 1) // 2  # Round up division
         
+        # Calculate dynamic vertical spacing based on number of rows
+        vertical_spacing = min(0.2, 0.8 / (num_rows - 1) if num_rows > 1 else 0.2)
+        
         # Create figure with subplots in 2 columns
         fig = make_subplots(
             rows=num_rows,
             cols=2,
-            vertical_spacing=0.2,  # Reduced spacing since we're using 2 columns
+            vertical_spacing=vertical_spacing,  # Dynamic spacing
             horizontal_spacing=0.15,
             shared_xaxes=False     # Independent x-axes
         )
@@ -344,12 +347,15 @@ class DataVisualizer:
         # Calculate number of rows needed for 2 columns
         num_rows = (len(mother_metrics) + 1) // 2  # Round up division
         
+        # Calculate dynamic vertical spacing based on number of rows
+        vertical_spacing = min(0.2, 0.8 / (num_rows - 1) if num_rows > 1 else 0.2)
+        
         # Create figure with subplots in 2 columns
         fig = make_subplots(
             rows=num_rows,
             cols=2,
             subplot_titles=[f"{metric}" for metric in mother_metrics],
-            vertical_spacing=0.2,
+            vertical_spacing=vertical_spacing,  # Dynamic spacing
             horizontal_spacing=0.15
         )
         
