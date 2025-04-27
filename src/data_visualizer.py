@@ -162,6 +162,10 @@ class DataVisualizer:
             textposition='auto',
         ))
         
+        # Calculate height based on number of metrics
+        height = max(600, 100 * len(metrics))  # Base height of 600px, or more for many metrics
+        width = min(1200, height * 2)  # Cap width at 1200px
+        
         # Update layout
         fig.update_layout(
             title=f"{strana_node} - {mother_metric} and Related Metrics ({date.strftime('%Y-%m-%d')})",
@@ -169,7 +173,10 @@ class DataVisualizer:
             yaxis_title="Value",
             showlegend=False,
             template="plotly_white",
-            xaxis_tickangle=-45
+            xaxis_tickangle=-45,
+            height=height,
+            width=width,
+            margin=dict(t=100, b=150)  # Increase bottom margin for long x-axis labels
         )
         
         if output_file:
@@ -359,10 +366,11 @@ class DataVisualizer:
             horizontal_spacing=0.15
         )
         
-        # Calculate height based on number of rows
-        height = max(300 * num_rows, 400)  # Increased height per row
-        # Set width based on height to maintain good aspect ratio
-        width = min(1200, height * 2)  # Cap width at 1200px
+        # Calculate height based on number of rows and metrics
+        # Base height of 400px per row, with additional space for title and margins
+        height = max(400 * num_rows + 150, 600)  # Minimum height of 600px
+        # Set width based on height to maintain good aspect ratio, capped at 1200px
+        width = min(1200, height * 2)
         
         # Process each mother metric
         for idx, mother_metric in enumerate(mother_metrics, 1):
@@ -409,7 +417,8 @@ class DataVisualizer:
             height=height,
             width=width,
             showlegend=False,
-            template="plotly_white"
+            template="plotly_white",
+            margin=dict(t=100, b=150, l=50, r=50)  # Increase margins for better readability
         )
         
         if output_file:
