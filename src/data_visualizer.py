@@ -163,8 +163,8 @@ class DataVisualizer:
         ))
         
         # Calculate height based on number of metrics
-        height = max(600, 100 * len(metrics))  # Base height of 600px, or more for many metrics
-        width = min(1200, height * 2)  # Cap width at 1200px
+        height = max(800, 150 * len(metrics)) # Increased base height and factor
+        width = height * 2.5 # Allow width to scale more horizontally
         
         # Update layout
         fig.update_layout(
@@ -221,18 +221,17 @@ class DataVisualizer:
         fig = make_subplots(
             rows=num_rows,
             cols=2,
+            subplot_titles=metrics, # Use subplot_titles argument
             vertical_spacing=vertical_spacing,  # Dynamic spacing
             horizontal_spacing=0.15,
             shared_xaxes=False     # Independent x-axes
         )
         
-        # Calculate height based on number of rows (minimum 400px)
-        height = max(250 * num_rows, 400)
+        # Calculate height based on number of rows (minimum 600px)
+        height = max(450 * num_rows, 600) # Increased base height per row and minimum
         # Set width based on height to maintain good aspect ratio
-        width = min(1200, height * 2)  # Cap width at 1200px
+        width = height * 2.5 # Allow width to scale more horizontally
         
-        subplot_annotations = [] # Initialize list for annotations
-
         # Add time series for each metric in separate subplots
         for idx, metric in enumerate(metrics, 1):
             # Calculate row and column (1-based indexing)
@@ -293,30 +292,6 @@ class DataVisualizer:
             # Add axis titles for each subplot
             fig.update_xaxes(title_text="Date", row=row, col=col)
             fig.update_yaxes(title_text="Value", row=row, col=col)
-
-            # --- Calculate annotation position using paper coordinates --- 
-            # Get subplot domain boundaries (approximate)
-            x_domain, y_domain = fig.get_subplot(row=row, col=col).xaxis.domain, fig.get_subplot(row=row, col=col).yaxis.domain
-
-            # Calculate center x position in paper coordinates
-            x_pos = (x_domain[0] + x_domain[1]) / 2
-
-            # Calculate y position slightly above the subplot in paper coordinates
-            y_pos = y_domain[1] + 0.02 # Adjust the offset (0.02) as needed 
-            # --- End annotation position calculation --- 
-
-            # Add subplot title annotation
-            subplot_annotations.append(dict(
-                text=f"<b>{metric}</b>",
-                xref="paper", # Reference the whole figure paper
-                yref="paper", # Reference the whole figure paper
-                x=x_pos, # Use calculated paper coordinate 
-                y=y_pos, # Use calculated paper coordinate
-                xanchor='center',
-                yanchor='bottom',
-                showarrow=False,
-                font=dict(size=14) # Adjust size as needed
-            ))
         
         # Update layout
         fig.update_layout(
@@ -325,7 +300,6 @@ class DataVisualizer:
             width=width,
             showlegend=False,
             template="plotly_white",
-            annotations=subplot_annotations # Add the annotations here
         )
         
         if output_file:
@@ -366,11 +340,11 @@ class DataVisualizer:
             horizontal_spacing=0.15
         )
         
-        # Calculate height based on number of rows and metrics
-        # Base height of 400px per row, with additional space for title and margins
-        height = max(400 * num_rows + 150, 600)  # Minimum height of 600px
-        # Set width based on height to maintain good aspect ratio, capped at 1200px
-        width = min(1200, height * 2)
+        # Calculate height based on number of rows and metrics - Reduced size
+        # Base height of 450px per row, with additional space for title and margins
+        height = max(450 * num_rows + 150, 700)  # Minimum height of 700px
+        # Set width based on height, less horizontal stretch
+        width = height * 1.2 # Further reduced width multiplier to fit two columns
         
         # Process each mother metric
         for idx, mother_metric in enumerate(mother_metrics, 1):
@@ -388,11 +362,19 @@ class DataVisualizer:
             
             # Use latest date if not specified
             if date is None:
-                date = plot_data['Date'].max()
+                # Ensure we get the max date from the relevant data subset
+                relevant_dates = self.data[(self.data['stranaNodeName'] == strana_node) & (self.data['consoMreMetricName'].isin(metrics))]['Date']
+                if not relevant_dates.empty:
+                    date = relevant_dates.max()
+                else: 
+                    # Handle case with no data for these metrics
+                    # Perhaps set date to today or raise an error?
+                    # For now, let's skip plotting this subplot if no date is found
+                    continue # Skip to next mother_metric if no date determined
             
             # Filter for specific date
             plot_data = plot_data[plot_data['Date'] == date]
-            
+
             # Add bar plot
             fig.add_trace(
                 go.Bar(
@@ -411,11 +393,14 @@ class DataVisualizer:
             fig.update_xaxes(title_text=None, row=row, col=col, tickangle=-90, automargin=True)
             fig.update_yaxes(title_text="Value", row=row, col=col)
         
+        # Corrected date assignment for title - use the determined date
+        title_date_str = date.strftime('%Y-%m-%d') if date else "Latest Available"
+
         # Update layout
         fig.update_layout(
-            title=f"{strana_node} - Bar Plots ({date.strftime('%Y-%m-%d')})",
-            height=height,
-            width=width,
+            title=f"{strana_node} - Bar Plots ({title_date_str})",
+            height=height, # Keep the existing height calculation
+            width=width,   # Keep the existing width calculation
             showlegend=False,
             template="plotly_white",
             margin=dict(t=100, b=150, l=50, r=50)  # Increase margins for better readability
