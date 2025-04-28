@@ -221,7 +221,6 @@ class DataVisualizer:
         fig = make_subplots(
             rows=num_rows,
             cols=2,
-            subplot_titles=metrics, # Use subplot_titles argument
             vertical_spacing=vertical_spacing,  # Dynamic spacing
             horizontal_spacing=0.15,
             shared_xaxes=False     # Independent x-axes
@@ -232,6 +231,8 @@ class DataVisualizer:
         # Set width based on height to maintain good aspect ratio
         width = height * 2.5 # Allow width to scale more horizontally
         
+        subplot_annotations = [] # Initialize list for annotations
+
         # Add time series for each metric in separate subplots
         for idx, metric in enumerate(metrics, 1):
             # Calculate row and column (1-based indexing)
@@ -292,6 +293,30 @@ class DataVisualizer:
             # Add axis titles for each subplot
             fig.update_xaxes(title_text="Date", row=row, col=col)
             fig.update_yaxes(title_text="Value", row=row, col=col)
+
+            # --- Calculate annotation position using paper coordinates --- 
+            # Get subplot domain boundaries (approximate)
+            x_domain, y_domain = fig.get_subplot(row=row, col=col).xaxis.domain, fig.get_subplot(row=row, col=col).yaxis.domain
+
+            # Calculate center x position in paper coordinates
+            x_pos = (x_domain[0] + x_domain[1]) / 2
+
+            # Calculate y position slightly above the subplot in paper coordinates
+            y_pos = y_domain[1] + 0.02 # Adjust the offset (0.02) as needed 
+            # --- End annotation position calculation --- 
+
+            # Add subplot title annotation
+            subplot_annotations.append(dict(
+                text=f"<b>{metric}</b>",
+                xref="paper", # Reference the whole figure paper
+                yref="paper", # Reference the whole figure paper
+                x=x_pos, # Use calculated paper coordinate 
+                y=y_pos, # Use calculated paper coordinate
+                xanchor='center',
+                yanchor='bottom',
+                showarrow=False,
+                font=dict(size=14) # Adjust size as needed
+            ))
         
         # Update layout
         fig.update_layout(
@@ -300,6 +325,7 @@ class DataVisualizer:
             width=width,
             showlegend=False,
             template="plotly_white",
+            annotations=subplot_annotations # Add the annotations here
         )
         
         if output_file:
