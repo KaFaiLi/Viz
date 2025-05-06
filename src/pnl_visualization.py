@@ -18,27 +18,59 @@ def load_data(file_path):
     return df
 
 def identify_level_columns(df):
-    """Identify columns by their level (L1, L2, etc.) and group them."""
+    """Identify columns by their level (Mother, L1, L2, etc.) and group them."""
     level_groups = {}
+    mother_level_key = "Mother"
+
     for col in df.columns:
-        if '_L' in col and '.DtD' in col and not col.endswith('_Cumulative'):
-            level = col.split('_L')[1].split('.')[0]
-            if level not in level_groups:
-                level_groups[level] = []
-            level_groups[level].append(col)
-    return dict(sorted(level_groups.items(), key=lambda x: x[0]))
+        if col.endswith('_Cumulative'):
+            continue
+
+        if '.DtD' in col:
+            if '_L' in col:
+                try:
+                    # Existing logic for L1, L2, etc.
+                    level = col.split('_L')[1].split('.')[0]
+                    # Ensure level is a numeric string for consistent key type
+                    if not level.isdigit(): 
+                        continue # Skip if level part is not purely numeric after _L
+                    if level not in level_groups:
+                        level_groups[level] = []
+                    level_groups[level].append(col)
+                except IndexError:
+                    # Malformed column name, skip
+                    continue
+            else:
+                # This is a "mother level" column
+                if mother_level_key not in level_groups:
+                    level_groups[mother_level_key] = []
+                level_groups[mother_level_key].append(col)
+
+    # Sort the levels: "Mother" first, then numeric levels
+    sorted_level_keys = []
+    if mother_level_key in level_groups and level_groups[mother_level_key]:
+        sorted_level_keys.append(mother_level_key)
+    
+    numeric_keys = sorted([k for k in level_groups if k != mother_level_key and k.isdigit()], key=int)
+    sorted_level_keys.extend(numeric_keys)
+    
+    # Add any other non-numeric, non-mother keys at the end, though typically not expected
+    other_keys = sorted([k for k in level_groups if k != mother_level_key and not k.isdigit()])
+    sorted_level_keys.extend(other_keys)
+
+    return {key: level_groups[key] for key in sorted_level_keys if key in level_groups and level_groups[key]}
 
 def create_multi_level_visualization(df, level_groups, output_dir):
     """Create a combined visualization with all levels in subplots."""
     num_levels = len(level_groups)
     
-    # Create figure with secondary y-axes for each subplot
+    # Create figure without secondary y-axes for each subplot
     fig = make_subplots(
         rows=num_levels, 
         cols=1,
-        subplot_titles=[f'Level {level} - Cumulative Attribution' for level in level_groups.keys()],
+        subplot_titles=[f'Level {level} - Cumulative Attribution & Result' for level in level_groups.keys()],
         vertical_spacing=0.15,  # Increased spacing between subplots
-        specs=[[{"secondary_y": True}] for _ in range(num_levels)]
+        # Remove specs for secondary_y
     )
     
     # Color palette for bars
@@ -66,10 +98,10 @@ def create_multi_level_visualization(df, level_groups, output_dir):
                 ),
                 row=idx,
                 col=1,
-                secondary_y=False,
+                # secondary_y=False, # This is the default, explicitly stating is fine or can be omitted
             )
         
-        # Add line for cumulative final result
+        # Add line for cumulative final result on the primary y-axis
         fig.add_trace(
             go.Scatter(
                 name='Cumulative Final Result',
@@ -82,13 +114,13 @@ def create_multi_level_visualization(df, level_groups, output_dir):
             ),
             row=idx,
             col=1,
-            secondary_y=True,
+            # secondary_y=True, # Remove this to use the primary y-axis
         )
         
-        # Update axes labels for each subplot
+        # Update axes labels for each subplot - now only one y-axis
         fig.update_xaxes(title_text="Date", row=idx, col=1)
-        fig.update_yaxes(title_text="Cumulative Attribution Values", secondary_y=False, row=idx, col=1)
-        fig.update_yaxes(title_text="Cumulative Final Result", secondary_y=True, row=idx, col=1)
+        fig.update_yaxes(title_text="Cumulative Value", row=idx, col=1) # Unified Y-axis title
+        # fig.update_yaxes(title_text="Cumulative Final Result", secondary_y=True, row=idx, col=1) # Remove this line
     
     # Update layout
     height_per_subplot = 400
