@@ -3,6 +3,19 @@
 import os
 import logging
 from pathlib import Path
+import sys
+
+# Add src directory to Python path to allow direct import
+# This assumes main.py is in the project root and custom_plot_visualization.py is in src/
+project_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(project_root, 'src'))
+
+try:
+    from custom_plot_visualization import run_all_custom_visualizations
+except ImportError as e:
+    print(f"Error importing custom_plot_visualization: {e}")
+    print("Please ensure custom_plot_visualization.py is in the 'src' directory and src is in PYTHONPATH.")
+    sys.exit(1)
 
 from src.data_loader import DataLoader
 from src.data_visualizer import DataVisualizer
@@ -173,6 +186,18 @@ def main():
     except Exception as e:
         logging.error(f"Error running visualization script: {e}")
         raise
+
+    print("Starting main application...")
+    
+    # Call the function from custom_plot_visualization.py
+    print("Generating custom plots and updating dashboard...")
+    try:
+        run_all_custom_visualizations()
+        print("Custom plot generation process completed by custom_plot_visualization module.")
+    except Exception as e:
+        print(f"An error occurred while running custom visualizations: {e}")
+
+    print("Main application finished.")
 
 if __name__ == '__main__':
     main() 

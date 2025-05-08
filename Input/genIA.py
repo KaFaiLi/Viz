@@ -47,10 +47,14 @@ for var in l2_vars:
 # Compute total of all effects
 sum_effects = df[l1_vars + l2_vars].sum(axis=1)
 
-# Ensure the sum of effects exceeds the FINAL RESULT for each row
-deltas = np.abs(np.random.uniform(0, 100, size=n))
-df['FINAL RESULT[LAST_FALSH].Daily'] = sum_effects - deltas
+# Generate delta based on sum direction
+delta_positive = np.random.uniform(0, 50, size=n)
+delta_negative = np.random.uniform(50, 150, size=n)
+deltas = np.where(sum_effects >= 0, delta_positive, delta_negative)
 
-# Save full dataset to CSV for download
+# Final result, biased to be more often positive
+df['PnL Explanation.DTD'] = sum_effects - deltas
+
+# Save full dataset to CSV
 csv_path = 'Input/fake_pnl_IA.csv'
 df.to_csv(csv_path, index=False)
