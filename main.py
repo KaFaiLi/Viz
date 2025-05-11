@@ -4,6 +4,8 @@ import os
 import logging
 from pathlib import Path
 import sys
+from datetime import datetime
+from typing import Optional, Union, List
 
 # Add src directory to Python path to allow direct import
 # This assumes main.py is in the project root and custom_plot_visualization.py is in src/
@@ -11,7 +13,7 @@ project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(project_root, 'src'))
 
 try:
-    from custom_plot_visualization import run_all_custom_visualizations
+    from src.custom_plot_visualization import run_all_custom_visualizations
 except ImportError as e:
     print(f"Error importing custom_plot_visualization: {e}")
     print("Please ensure custom_plot_visualization.py is in the 'src' directory and src is in PYTHONPATH.")
@@ -65,16 +67,28 @@ def process_plots(
             
             # Create grouped bar plots if requested
             if 'bar' in plot_types and mother_metrics:
+                # Define the specific dates for the bar plot
+                dates_for_bar_plot = [
+                    datetime(2023, 3, 14),
+                    datetime(2023, 3, 16)
+                ]
                 create_bar_plot(
                     visualizer, strana_node, mother_metrics,
-                    node_output_dir, plot_files_info
+                    node_output_dir, plot_files_info,
+                    selected_dates=dates_for_bar_plot
                 )
             
             # Create time series plots
             if 'time_series' in plot_types:
+                # Define the specific event dates for the time series plot
+                event_dates_for_time_series = [
+                    datetime(2023, 3, 14),
+                    datetime(2023, 3, 16)
+                ]
                 create_time_series_plots(
                     visualizer, strana_node, mother_metrics,
-                    node_output_dir, plot_files_info
+                    node_output_dir, plot_files_info,
+                    event_dates=event_dates_for_time_series
                 )
 
 def create_bar_plot(
@@ -82,10 +96,22 @@ def create_bar_plot(
     strana_node: str,
     mother_metrics: list,
     output_dir: Path,
-    plot_files_info: list
+    plot_files_info: list,
+    selected_dates: Optional[Union[datetime, List[datetime]]] = None
 ) -> None:
     """Create a grouped bar plot for the specified metrics."""
-    output_filename = f'{strana_node}_{"_".join(mother_metrics)}_bar.html'
+    # Create a unique filename part if multiple dates are selected
+    date_suffix = ""
+    if isinstance(selected_dates, list) and len(selected_dates) > 1:
+        # Use a generic suffix or hash if list is too long to put in filename
+        date_suffix = "_multi_date" 
+    elif isinstance(selected_dates, datetime):
+        date_suffix = f"_{selected_dates.strftime('%Y%m%d')}"
+    # else, if selected_dates is None or a list with one date, the visualizer handles latest date,
+    # or the single date might be incorporated differently by visualizer if needed.
+    # For now, the original filename logic for single/latest date is implicitly handled by visualizer.
+
+    output_filename = f'{strana_node}_{"_".join(mother_metrics)}_bar{date_suffix}.html'
     output_file_path = output_dir / output_filename
     
     logging.info(f"Creating grouped bar plot for {strana_node}, "
@@ -96,6 +122,7 @@ def create_bar_plot(
         visualizer.create_grouped_bar_plots(
             strana_node=strana_node,
             mother_metrics=mother_metrics,
+            selected_dates=selected_dates,
             output_file=str(output_file_path)
         )
         plot_files_info.append({
@@ -114,7 +141,8 @@ def create_time_series_plots(
     strana_node: str,
     mother_metrics: list,
     output_dir: Path,
-    plot_files_info: list
+    plot_files_info: list,
+    event_dates: Optional[List[datetime]] = None
 ) -> None:
     """Create time series plots for the specified metrics."""
     for metric in mother_metrics:
@@ -128,7 +156,8 @@ def create_time_series_plots(
             visualizer.create_time_series_plot(
                 strana_node=strana_node,
                 mother_metric=metric,
-                output_file=str(output_file_path)
+                output_file=str(output_file_path),
+                event_dates=event_dates
             )
             plot_files_info.append({
                 'strana_node': strana_node,

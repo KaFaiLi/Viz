@@ -2,16 +2,81 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os
 
-def generate_custom_dual_axis_plot(
-    output_html_file,
-    x_categories,
-    bar_y_values, bar_name, bar_color, bar_yaxis_title,
-    line_y_values, line_name, line_color, line_yaxis_title,
-    main_title, xaxis_title
-):
+def _create_ftq_vs_rate_plot(output_html_file):
     """
-    Creates a combined bar and line plot with dual y-axes and saves it as an HTML file.
+    Creates the FTQ vs RATE plot with hardcoded data and saves it as an HTML file.
     """
+    # Hardcoded data for FTQ vs RATE plot
+    x_categories = ['1M', '3M', '5Y']
+    ftq_values = {'FTQ1M': 100, 'FTQ3M': 150, 'FTQ5Y': 200}
+    bar_y_values = [ftq_values['FTQ1M'], ftq_values['FTQ3M'], ftq_values['FTQ5Y']]
+    bar_name = 'FTQ'
+    bar_color = 'blue'
+    bar_yaxis_title = 'FTQ Value'
+
+    rate_values = {'RATE1M': 5.0, 'RATE3M': 5.5, 'RATE5Y': 6.0}
+    line_y_values = [rate_values['RATE1M'], rate_values['RATE3M'], rate_values['RATE5Y']]
+    line_name = 'RATE'
+    line_color = 'red'
+    line_yaxis_title = 'RATE (%)'
+    
+    main_title = 'Custom Plot: FTQ (Bar) vs. RATE (Line)'
+    xaxis_title = 'Tenor'
+
+    # Create figure with secondary y-axis
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Add bar trace
+    fig.add_trace(
+        go.Bar(x=x_categories, y=bar_y_values, name=bar_name, marker_color=bar_color),
+        secondary_y=False,
+    )
+
+    # Add line trace
+    fig.add_trace(
+        go.Scatter(x=x_categories, y=line_y_values, name=line_name, mode='lines+markers', marker_color=line_color),
+        secondary_y=True,
+    )
+
+    # Add figure title and x-axis title
+    fig.update_layout(
+        title_text=main_title,
+        xaxis_title=xaxis_title
+    )
+
+    # Set y-axes titles
+    fig.update_yaxes(title_text=f"<b>{bar_yaxis_title}</b>", secondary_y=False)
+    fig.update_yaxes(title_text=f"<b>{line_yaxis_title}</b>", secondary_y=True)
+    
+    # Ensure output directory exists
+    os.makedirs(os.path.dirname(output_html_file), exist_ok=True)
+    
+    # Save plot to HTML file
+    fig.write_html(output_html_file)
+    print(f"Custom plot saved to {output_html_file}")
+    return output_html_file
+
+def _create_ftq_vs_irdelta_plot(output_html_file):
+    """
+    Creates the FTQ vs IRDelta plot with hardcoded data and saves it as an HTML file.
+    """
+    # Hardcoded data for FTQ vs IRDelta plot
+    x_categories = ['1M', '3M', '5Y'] 
+    ftq_values = {'FTQ1M': 100, 'FTQ3M': 150, 'FTQ5Y': 200} 
+    bar_y_values = [ftq_values['FTQ1M'], ftq_values['FTQ3M'], ftq_values['FTQ5Y']]
+    bar_name = 'FTQ'
+    bar_color = 'green'
+    bar_yaxis_title = 'FTQ Value'
+
+    ir_delta_values = {'IRDelta1M': 0.5, 'IRDelta3M': 0.7, 'IRDelta5Y': 1.0} 
+    line_y_values = [ir_delta_values['IRDelta1M'], ir_delta_values['IRDelta3M'], ir_delta_values['IRDelta5Y']]
+    line_name = 'IRDelta'
+    line_color = 'purple'
+    line_yaxis_title = 'IRDelta Value'
+    
+    main_title = 'Custom Plot: FTQ (Bar) vs. IRDelta (Line)'
+    xaxis_title = 'Tenor'
+    
     # Create figure with secondary y-axis
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
@@ -139,39 +204,17 @@ def run_all_custom_visualizations():
     main_dashboard_html_file = os.path.join(output_dir, "index.html")
 
     # --- Plot 1: FTQ vs RATE ---
-    x_categories = ['1M', '3M', '5Y']
-    ftq_values_plot1 = {'FTQ1M': 100, 'FTQ3M': 150, 'FTQ5Y': 200}
-    bar_y_values_plot1 = [ftq_values_plot1['FTQ1M'], ftq_values_plot1['FTQ3M'], ftq_values_plot1['FTQ5Y']]
-    rate_values_plot1 = {'RATE1M': 5.0, 'RATE3M': 5.5, 'RATE5Y': 6.0}
-    line_y_values_plot1 = [rate_values_plot1['RATE1M'], rate_values_plot1['RATE3M'], rate_values_plot1['RATE5Y']]
-    
     ftq_rate_plot_html_file = os.path.join(custom_plots_output_dir, "ftq_vs_rate_plot.html")
     
-    generated_ftq_rate_plot_path = generate_custom_dual_axis_plot(
-        output_html_file=ftq_rate_plot_html_file,
-        x_categories=x_categories,
-        bar_y_values=bar_y_values_plot1, bar_name='FTQ', bar_color='blue', bar_yaxis_title='FTQ Value',
-        line_y_values=line_y_values_plot1, line_name='RATE', line_color='red', line_yaxis_title='RATE (%)',
-        main_title='Custom Plot: FTQ (Bar) vs. RATE (Line)',
-        xaxis_title='Tenor'
+    generated_ftq_rate_plot_path = _create_ftq_vs_rate_plot(
+        output_html_file=ftq_rate_plot_html_file
     )
 
     # --- Plot 2: FTQ vs IRDelta ---
-    ftq_values_plot2 = ftq_values_plot1 
-    bar_y_values_plot2 = [ftq_values_plot2['FTQ1M'], ftq_values_plot2['FTQ3M'], ftq_values_plot2['FTQ5Y']]
-    
-    ir_delta_values = {'IRDelta1M': 0.5, 'IRDelta3M': 0.7, 'IRDelta5Y': 1.0} 
-    line_y_values_plot2 = [ir_delta_values['IRDelta1M'], ir_delta_values['IRDelta3M'], ir_delta_values['IRDelta5Y']]
-    
     ftq_irdelta_plot_html_file = os.path.join(custom_plots_output_dir, "ftq_vs_irdelta_plot.html")
 
-    generated_ftq_irdelta_plot_path = generate_custom_dual_axis_plot(
-        output_html_file=ftq_irdelta_plot_html_file,
-        x_categories=x_categories,
-        bar_y_values=bar_y_values_plot2, bar_name='FTQ', bar_color='green', bar_yaxis_title='FTQ Value',
-        line_y_values=line_y_values_plot2, line_name='IRDelta', line_color='purple', line_yaxis_title='IRDelta Value',
-        main_title='Custom Plot: FTQ (Bar) vs. IRDelta (Line)',
-        xaxis_title='Tenor'
+    generated_ftq_irdelta_plot_path = _create_ftq_vs_irdelta_plot(
+        output_html_file=ftq_irdelta_plot_html_file
     )
     
     # --- Update Main HTML with both plots ---
