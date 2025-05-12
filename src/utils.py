@@ -31,11 +31,14 @@ class DataLoader:
         if self.data is None:
             raise Exception("No data loaded. Please load data first.")
             
-        # Convert date column to datetime
         try:
-            self.data['Date'] = pd.to_datetime(self.data['Date'])
-        except Exception as e:
+            # Convert relevant columns to appropriate types
+            # Ensure 'Date' column is converted to datetime
+            self.data['consoValueDate'] = pd.to_datetime(self.data['consoValueDate'])
+        except KeyError as e:
             raise Exception(f"Error converting Date column: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Error during data preprocessing: {str(e)}")
         
         # Handle missing consoMreMetricName
         self.data['consoMreMetricName'] = self.data['consoMreMetricName'].fillna(
@@ -64,3 +67,6 @@ class DataLoader:
             raise Exception(f"Missing required columns: {missing_cols}")
         
         return True 
+
+    def get_data(self) -> pd.DataFrame:
+        return self.data 

@@ -56,7 +56,7 @@ risk_metrics = [
 nodes = ['FICRATG10JGB', 'FICASIRATFLO']
 
 # Create date range for Q1 2023
-dates = pd.date_range(start='2023-01-01', end='2023-03-31')
+dates = pd.date_range(start='2023-01-01', end='2025-03-31')
 
 # Generate the data
 data = []
@@ -76,7 +76,7 @@ for date in dates:
                 'rmRiskMetricName': metric,
                 'stranaNodeName': node,
                 'consoValue': round(np.random.uniform(-1e7, 2e7), 2),
-                'Date': date.strftime('%#m/%#d/%Y'),  # Use '%#m/%#d/%Y' on Windows
+                'consoValueDate': date.strftime('%#m/%#d/%Y'),  # Use '%#m/%#d/%Y' on Windows
                 'consoMreMetricName': metric,
                 'limMaxValue': lim_max if not np.isnan(lim_max) else '',
                 'limMinValue': lim_min if not np.isnan(lim_min) else ''

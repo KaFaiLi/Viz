@@ -28,7 +28,7 @@ class DataVisualizer:
     def _extract_currency(self, metric_name: str) -> Optional[str]:
         """Extract currency from metric name if present."""
         # Match patterns like [USD], [EUR], [JPY]
-        currency_pattern = r'\[([A-Z]{3})\]'
+        currency_pattern = r'\[([A-Z                                   ]{3})\]'
         match = re.search(currency_pattern, metric_name)
         return match.group(1) if match else None
     
@@ -147,10 +147,10 @@ class DataVisualizer:
         
         # Use latest date if not specified
         if date is None:
-            date = plot_data['Date'].max()
+            date = plot_data['consoValueDate'].max()
         
         # Filter for specific date
-        plot_data = plot_data[plot_data['Date'] == date]
+        plot_data = plot_data[plot_data['consoValueDate'] == date]
         
         # Create bar plot
         fig = go.Figure()
@@ -184,7 +184,121 @@ class DataVisualizer:
             fig.write_html(output_file)
         
         return fig
-    
+
+    def _prepare_time_series_layout_config(self, num_metrics: int) -> dict:
+        """
+        Calculate layout configuration for time series plots.
+
+        Args:
+            num_metrics (int): Number of metrics to be plotted.
+
+        Returns:
+            dict: Configuration for num_rows, vertical_spacing, height, and width.
+        """
+        if num_metrics == 0: # Should ideally be caught before calling this
+            return {'num_rows': 1, 'vertical_spacing': 0.2, 'height': 600, 'width': 1200}
+
+        num_rows = (num_metrics + 1) // 2
+        vertical_spacing = min(0.2, 0.8 / (num_rows - 1) if num_rows > 1 else 0.2)
+        # Increased base height per row and minimum
+        height = max(450 * num_rows, 600)
+        # Allow width to scale more horizontally
+        width = height * 2.5
+        return {'num_rows': num_rows, 'vertical_spacing': vertical_spacing, 'height': height, 'width': width}
+
+    def _add_time_series_subplot_elements(
+        self,
+        fig: go.Figure,
+        metric_data: pd.DataFrame,
+        metric_name: str,
+        row: int,
+        col: int,
+        event_dates: Optional[List[datetime]]
+    ):
+        """
+        Add traces, limit lines, event lines, and configure axes for a single subplot.
+        Assumes metric_data is already sorted by 'consoValueDate'.
+        """
+        # Add the time series trace
+        fig.add_trace(
+            go.Scatter(
+                x=metric_data['consoValueDate'],
+                y=metric_data['consoValue'],
+                name=metric_name, # Used for hover text, legend is off
+                mode='lines+markers',
+                showlegend=False
+            ),
+            row=row,
+            col=col
+        )
+
+        # Add limit lines if they exist for this specific metric
+        if not metric_data.empty:
+            latest_data = metric_data.iloc[-1]
+            if pd.notna(latest_data['limMaxValue']):
+                fig.add_hline(
+                    y=latest_data['limMaxValue'],
+                    line_dash="dash",
+                    line_color="red",
+                    annotation=dict(text="Max Limit", xanchor='left', x=0, yanchor='bottom'),
+                    row=row,
+                    col=col
+                )
+            if pd.notna(latest_data['limMinValue']):
+                fig.add_hline(
+                    y=latest_data['limMinValue'],
+                    line_dash="dash",
+                    line_color="red",
+                    annotation=dict(text="Min Limit", xanchor='left', x=0, yanchor='top'),
+                    row=row,
+                    col=col
+                )
+
+        # Add event date lines if specified
+        if event_dates:
+            for event_date in event_dates:
+                if isinstance(event_date, datetime): # Ensure it's a datetime object
+                    fig.add_vline(
+                        x=event_date.timestamp() * 1000, # Convert datetime to milliseconds
+                        line_width=1,
+                        line_dash="dot",
+                        line_color="darkgrey",
+                        row=row,
+                        col=col
+                    )
+        
+        # Configure axes for this subplot
+        fig.update_xaxes(title_text="", row=row, col=col)
+        fig.update_yaxes(title_text="Value", row=row, col=col)
+
+    def _generate_subplot_title_annotation(
+        self,
+        fig: go.Figure, # Needed for get_subplot domain
+        metric_name: str,
+        row: int,
+        col: int,
+        has_data: bool
+    ) -> dict:
+        """
+        Generate the annotation dictionary for a subplot title.
+        """
+        x_domain, y_domain = fig.get_subplot(row=row, col=col).xaxis.domain, fig.get_subplot(row=row, col=col).yaxis.domain
+        x_pos = (x_domain[0] + x_domain[1]) / 2
+        y_pos = y_domain[1] + 0.02 # Adjust offset as needed
+
+        title_text = f"<b>{metric_name}</b>"
+        if not has_data:
+            title_text += " (No Data)"
+
+        return dict(
+            text=title_text,
+            xref="paper", yref="paper",
+            x=x_pos, y=y_pos,
+            xanchor='center', yanchor='bottom',
+            showarrow=False,
+            font=dict(size=14) # Adjust size as needed
+        )
+
     def create_time_series_plot(
         self,
         strana_node: str,
@@ -206,164 +320,71 @@ class DataVisualizer:
         """
         # Get all related metrics
         metrics = self.get_all_related_metrics(strana_node, mother_metric)
+
+        if not metrics:
+            logging.warning(f"No metrics found for mother_metric '{mother_metric}' in stranaNode '{strana_node}'. Skipping time series plot generation.")
+            fig = go.Figure()
+            fig.update_layout(
+                title=f"{strana_node} - {mother_metric} - No Metrics Found",
+                height=600, # Default height
+                width=1200  # Default width
+            )
+            if output_file:
+                fig.write_html(output_file)
+            return fig
         
-        # Filter data
+        # Filter data ONCE for all relevant metrics and sort by date.
         mask = (self.data['stranaNodeName'] == strana_node) & \
                (self.data['consoMreMetricName'].isin(metrics))
-        plot_data = self.data[mask].copy()
-        
-        # Ensure the overall data for this plot is sorted by date before creating subplots
-        plot_data = plot_data.sort_values('Date')
+        # .copy() ensures we operate on a distinct DataFrame for this plot.
+        relevant_plot_data = self.data[mask].copy()
+        relevant_plot_data.sort_values('consoValueDate', inplace=True)
 
-        # Calculate number of rows needed for 2 columns
-        num_rows = (len(metrics) + 1) // 2  # Round up division
+        # Calculate layout parameters
+        layout_config = self._prepare_time_series_layout_config(len(metrics))
         
-        # Calculate dynamic vertical spacing based on number of rows
-        vertical_spacing = min(0.2, 0.8 / (num_rows - 1) if num_rows > 1 else 0.2)
-        
-        # Create figure with subplots in 2 columns
+        # Create figure with subplots
         fig = make_subplots(
-            rows=num_rows,
-            cols=2,
-            vertical_spacing=vertical_spacing,  # Dynamic spacing
-            horizontal_spacing=0.15,
-            shared_xaxes=False     # Independent x-axes
+            rows=layout_config['num_rows'],
+            cols=2, # Fixed at 2 columns
+            vertical_spacing=layout_config['vertical_spacing'],
+            horizontal_spacing=0.15, # As per original
+            shared_xaxes=False     # Independent x-axes, as per original
         )
         
-        # Calculate height based on number of rows (minimum 600px)
-        height = max(450 * num_rows, 600) # Increased base height per row and minimum
-        # Set width based on height to maintain good aspect ratio
-        width = height * 2.5 # Allow width to scale more horizontally
-        
-        subplot_annotations = [] # Initialize list for annotations
-        all_event_line_shapes = [] # List to collect all event line shapes
+        subplot_title_annotations = [] # Initialize list for annotations
 
         # Add time series for each metric in separate subplots
-        for idx, metric_item in enumerate(metrics, 1): # Renamed metric to metric_item to avoid conflict
+        for idx, current_metric_name in enumerate(metrics, 1):
             # Calculate row and column (1-based indexing)
             row = (idx + 1) // 2
             col = 2 if idx % 2 == 0 else 1
             
-            metric_data = plot_data[plot_data['consoMreMetricName'] == metric_item].copy()
-            # This sort ensures points within *this* trace are ordered, complementing the global sort above
-            metric_data = metric_data.sort_values('Date')
+            # Get data for the current metric from the pre-filtered and pre-sorted DataFrame.
+            # No further sorting or copying needed here if metric_data_subset is only read.
+            metric_data_subset = relevant_plot_data[relevant_plot_data['consoMreMetricName'] == current_metric_name]
             
-            # Add the time series
-            fig.add_trace(
-                go.Scatter(
-                    x=metric_data['Date'],
-                    y=metric_data['consoValue'],
-                    name=metric_item,
-                    mode='lines+markers',
-                    showlegend=False
-                ),
-                row=row,
-                col=col
+            has_data = not metric_data_subset.empty
+
+            # Add traces, limit lines, event lines, and configure axes for the subplot
+            self._add_time_series_subplot_elements(
+                fig, metric_data_subset, current_metric_name, row, col, event_dates
             )
             
-            # Add limit lines if they exist for this specific metric
-            if not metric_data.empty:
-                latest_data = metric_data.iloc[-1]
-                
-                if pd.notna(latest_data['limMaxValue']):
-                    fig.add_hline(
-                        y=latest_data['limMaxValue'],
-                        line_dash="dash",
-                        line_color="red",
-                        annotation=dict(
-                            text="Max Limit",
-                            xanchor='left',
-                            x=0,
-                            yanchor='bottom'
-                        ),
-                        row=row,
-                        col=col
-                    )
-                
-                if pd.notna(latest_data['limMinValue']):
-                    fig.add_hline(
-                        y=latest_data['limMinValue'],
-                        line_dash="dash",
-                        line_color="red",
-                        annotation=dict(
-                            text="Min Limit",
-                            xanchor='left',
-                            x=0,
-                            yanchor='top'
-                        ),
-                        row=row,
-                        col=col
-                    )
-            
-            # Collect event date line shapes if specified
-            if event_dates:
-                # Calculate the xref name for the current subplot
-                # Assuming 2 columns as per make_subplots call
-                num_columns_for_subplots = 2 
-                axis_idx = (row - 1) * num_columns_for_subplots + col
-                xref_name = f'x{axis_idx}' if axis_idx > 1 else 'x'
-
-                for event_date in event_dates:
-                    if isinstance(event_date, datetime): # Ensure it's a datetime object
-                        shape_dict = {
-                            'type': 'line',
-                            'xref': xref_name,
-                            'yref': 'paper', # Relative to the subplot's y-axis plotting area
-                            'x0': event_date.timestamp() * 1000, # Convert datetime to milliseconds
-                            'x1': event_date.timestamp() * 1000,
-                            'y0': 0, # Bottom of the subplot plotting area
-                            'y1': 1, # Top of the subplot plotting area
-                            'line': {
-                                'width': 1,
-                                'dash': 'dot',
-                                'color': 'darkgrey'
-                            }
-                        }
-                        all_event_line_shapes.append(shape_dict)
-                        # Optional: Add annotation for the event line (would also need to be collected)
-                        # ...
-
-            # Add axis titles for each subplot
-            fig.update_xaxes(title_text="Date", row=row, col=col)
-            fig.update_yaxes(title_text="Value", row=row, col=col)
-
-            # --- Calculate annotation position using paper coordinates --- 
-            # Get subplot domain boundaries (approximate)
-            x_domain, y_domain = fig.get_subplot(row=row, col=col).xaxis.domain, fig.get_subplot(row=row, col=col).yaxis.domain
-
-            # Calculate center x position in paper coordinates
-            x_pos = (x_domain[0] + x_domain[1]) / 2
-
-            # Calculate y position slightly above the subplot in paper coordinates
-            y_pos = y_domain[1] + 0.02 # Adjust the offset (0.02) as needed 
-            # --- End annotation position calculation --- 
-
-            # Add subplot title annotation
-            subplot_annotations.append(dict(
-                text=f"<b>{metric_item}</b>", # Use metric_item here
-                xref="paper", # Reference the whole figure paper
-                yref="paper", # Reference the whole figure paper
-                x=x_pos, # Use calculated paper coordinate 
-                y=y_pos, # Use calculated paper coordinate
-                xanchor='center',
-                yanchor='bottom',
-                showarrow=False,
-                font=dict(size=14) # Adjust size as needed
-            ))
+            # Generate and collect subplot title annotation
+            annotation = self._generate_subplot_title_annotation(
+                fig, current_metric_name, row, col, has_data
+            )
+            subplot_title_annotations.append(annotation)
         
-        # Add all collected event line shapes to the figure's layout
-        if all_event_line_shapes:
-            existing_shapes = list(fig.layout.shapes) if fig.layout.shapes else []
-            fig.layout.shapes = tuple(existing_shapes + all_event_line_shapes)
-
-        # Update layout
+        # Update overall figure layout
         fig.update_layout(
             title=f"{strana_node} - {mother_metric} and Related Metrics Time Series",
-            height=height,
-            width=width,
-            showlegend=False,
-            template="plotly_white",
-            annotations=subplot_annotations # Add the annotations here
+            height=layout_config['height'],
+            width=layout_config['width'],
+            showlegend=False, # As per original
+            template="plotly_white", # As per original
+            annotations=subplot_title_annotations # Add all subplot titles at once
         )
         
         if output_file:
@@ -466,11 +487,11 @@ class DataVisualizer:
 
             if dates_provided_by_user:
                 actual_dates_this_subplot = dates_for_plot_generation
-                data_for_bars_this_subplot = current_mother_metric_data[current_mother_metric_data['Date'].isin(actual_dates_this_subplot)]
+                data_for_bars_this_subplot = current_mother_metric_data[current_mother_metric_data['consoValueDate'].isin(actual_dates_this_subplot)]
             else: # No dates provided by user, use latest for this subplot
-                latest_date_for_subplot = current_mother_metric_data['Date'].max()
+                latest_date_for_subplot = current_mother_metric_data['consoValueDate'].max()
                 actual_dates_this_subplot = [latest_date_for_subplot]
-                data_for_bars_this_subplot = current_mother_metric_data[current_mother_metric_data['Date'] == latest_date_for_subplot]
+                data_for_bars_this_subplot = current_mother_metric_data[current_mother_metric_data['consoValueDate'] == latest_date_for_subplot]
 
             if not actual_dates_this_subplot or data_for_bars_this_subplot.empty:
                 logging.info(f"No data for subplot {mother_metric} for determined dates: {actual_dates_this_subplot}")
@@ -479,7 +500,7 @@ class DataVisualizer:
             actual_dates_this_subplot.sort() # Ensure consistent order for traces
 
             for plot_date in actual_dates_this_subplot:
-                date_specific_data = data_for_bars_this_subplot[data_for_bars_this_subplot['Date'] == plot_date]
+                date_specific_data = data_for_bars_this_subplot[data_for_bars_this_subplot['consoValueDate'] == plot_date]
                 
                 if date_specific_data.empty:
                     continue

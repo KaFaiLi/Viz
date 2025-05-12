@@ -6,9 +6,12 @@ from pathlib import Path
 import sys
 from datetime import datetime
 from typing import Optional, Union, List
+import pandas as pd
+import time
+import concurrent.futures
 
 # Add src directory to Python path to allow direct import
-# This assumes main.py is in the project root and custom_plot_visualization.py is in src/
+# This assumes main.py is in the projenct root and custom_plot_visualization.py is in src/
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(project_root, 'src'))
 
@@ -19,11 +22,17 @@ except ImportError as e:
     print("Please ensure custom_plot_visualization.py is in the 'src' directory and src is in PYTHONPATH.")
     sys.exit(1)
 
-from src.data_loader import DataLoader
-from src.data_visualizer import DataVisualizer
+from src.utils import DataLoader
+from src.SGMR_visualizer import DataVisualizer
 from src.html_generator import HTMLGenerator
 from src.config import VisualizationConfig
 from src.pnl_visualization import create_pnl_visualization
+
+# Cache for loaded event dates to avoid repeated file reads
+_EVENT_DATES_CACHE = None
+
+# Concurrency utilities
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 def setup_logging():
     """Configure logging settings."""
@@ -44,6 +53,46 @@ def create_output_directories(config: dict) -> None:
         os.makedirs(node_output_dir, exist_ok=True)
         logging.info(f"Created output directory: {node_output_dir}")
 
+def load_event_dates() -> List[datetime]:
+    """
+    Load event dates from the Auction Date CSV file.
+    Uses caching to avoid repeated file reads.
+    
+    Returns:
+        List[datetime]: List of event dates
+    """
+    global _EVENT_DATES_CACHE
+    
+    if _EVENT_DATES_CACHE is not None:
+        return _EVENT_DATES_CACHE
+    
+    try:
+        auction_date_file = Path('Input') / 'Auction Date.csv'
+        if not auction_date_file.exists():
+            logging.warning(f"Auction Date file not found at {auction_date_file}. Using default dates.")
+            return [datetime(2023, 3, 14), datetime(2023, 3, 16)]
+        
+        df = pd.read_csv(auction_date_file)
+        if 'EventDate' not in df.columns:
+            logging.warning("EventDate column not found in Auction Date file. Using default dates.")
+            return [datetime(2023, 3, 14), datetime(2023, 3, 16)]
+        
+        # Convert string dates to datetime objects
+        event_dates = [pd.to_datetime(date_str).to_pydatetime() for date_str in df['EventDate']]
+        
+        # Sort dates for consistency
+        event_dates.sort()
+        
+        # Cache for future use
+        _EVENT_DATES_CACHE = event_dates
+        
+        logging.info(f"Loaded {len(event_dates)} event dates from {auction_date_file}")
+        return event_dates
+    
+    except Exception as e:
+        logging.error(f"Error loading event dates from Auction Date file: {e}")
+        return [datetime(2023, 3, 14), datetime(2023, 3, 16)]
+
 def process_plots(
     visualizer: DataVisualizer,
     config: dict,
@@ -57,6 +106,13 @@ def process_plots(
         config: Visualization configuration dictionary
         plot_files_info: List to store plot information
     """
+    # Load event dates once for all plots
+    event_dates = load_event_dates()
+    
+    # Track total plot generation time for reporting
+    start_time = time.time()
+    total_plots = 0
+    
     for strana_node, node_config in config.items():
         logging.info(f"Processing stranaNode: {strana_node}")
         node_output_dir = Path('output') / strana_node
@@ -77,19 +133,19 @@ def process_plots(
                     node_output_dir, plot_files_info,
                     selected_dates=dates_for_bar_plot
                 )
+                total_plots += 1
             
             # Create time series plots
             if 'time_series' in plot_types:
-                # Define the specific event dates for the time series plot
-                event_dates_for_time_series = [
-                    datetime(2023, 3, 14),
-                    datetime(2023, 3, 16)
-                ]
                 create_time_series_plots(
-                    visualizer, strana_node, mother_metrics,
+                    visualizer, config, strana_node, mother_metrics,
                     node_output_dir, plot_files_info,
-                    event_dates=event_dates_for_time_series
+                    event_dates=event_dates
                 )
+                total_plots += 1
+    
+    elapsed_time = time.time() - start_time
+    logging.info(f"Generated {total_plots} plots in {elapsed_time:.2f} seconds")
 
 def create_bar_plot(
     visualizer: DataVisualizer,
@@ -136,45 +192,101 @@ def create_bar_plot(
         logging.error(f"Error creating grouped bar plot for {strana_node} - "
                      f"metrics {mother_metrics}: {e}")
 
+def generate_single_time_series_plot(metric_name, strana_node, data_slice, output_file_path_local, event_dates):
+    # Log start of processing within the worker
+    logging.info(f"[Worker] Starting plot generation for metric: {metric_name}, node: {strana_node}")
+
+    visualizer_local = DataVisualizer(data_slice)
+    logging.basicConfig(level=logging.INFO)
+    visualizer_local.create_time_series_plot(
+        strana_node=strana_node,
+        mother_metric=metric_name,
+        output_file=output_file_path_local,
+        event_dates=event_dates
+    )
+    return {
+        'strana_node': strana_node,
+        'plot_type': 'time_series',
+        'metrics': metric_name,
+        'output_file': output_file_path_local
+    }
+
 def create_time_series_plots(
     visualizer: DataVisualizer,
+    config: dict,
     strana_node: str,
     mother_metrics: list,
     output_dir: Path,
     plot_files_info: list,
     event_dates: Optional[List[datetime]] = None
 ) -> None:
-    """Create time series plots for the specified metrics."""
-    for metric in mother_metrics:
-        output_filename = f'{strana_node}_{metric}_timeseries.html'
-        output_file_path = output_dir / output_filename
-        
-        logging.info(f"Creating time series plot for {strana_node}, "
-                    f"metric: {metric}. Output: {output_file_path}")
-        
-        try:
-            visualizer.create_time_series_plot(
-                strana_node=strana_node,
-                mother_metric=metric,
-                output_file=str(output_file_path),
-                event_dates=event_dates
+    """Create time series plots for the specified metrics using parallel processes."""
+
+    import pandas as pd
+    # We'll extract the full data DataFrame from the visualizer.
+    full_data = visualizer.data.copy()
+
+    max_workers = min(16, max(1, len(mother_metrics)))
+    futures = []
+    # Keep track of which future belongs to which metric for better logging
+    future_to_metric = {}
+
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        for metric in mother_metrics:
+            output_filename_local = f'{strana_node}_{metric}_timeseries.html'
+            output_file_path_local = str(output_dir / output_filename_local)
+            # Filter only the relevant data for this metric and strana_node
+            mask = (full_data['stranaNodeName'] == strana_node)
+            data_slice = full_data[mask].copy()
+            # Pass only the data for this strana_node (DataVisualizer will further filter by metric)
+            future = executor.submit(generate_single_time_series_plot, metric, strana_node, data_slice, output_file_path_local, event_dates)
+            futures.append(future)
+            future_to_metric[future] = metric
+
+        pending_futures = set(futures)
+        last_status_time = time.time()
+
+        while pending_futures:
+            # Wait for at least one future to complete, or timeout after 60 seconds
+            done, pending_futures = concurrent.futures.wait(
+                pending_futures, 
+                timeout=60, 
+                return_when=concurrent.futures.FIRST_COMPLETED
             )
-            plot_files_info.append({
-                'strana_node': strana_node,
-                'plot_type': 'time_series',
-                'metrics': metric,
-                'output_file': str(output_file_path)
-            })
-            logging.info(f"Time series plot for metric {metric} created.")
-        except Exception as e:
-            logging.error(f"Error creating time series plot for {strana_node} - "
-                         f"metric {metric}: {e}")
+
+            # Process completed futures
+            for fut in done:
+                metric = future_to_metric[fut]
+                try:
+                    info = fut.result() # Get result or raise exception
+                    plot_files_info.append(info)
+                    logging.info(
+                        f"[ProcessPool] Successfully completed plot for metric: {metric}"
+                    )
+                except Exception as e:
+                    logging.error(
+                        f"[ProcessPool] Error generating plot for metric {metric}, node {strana_node}: {e}"
+                    )
+                # Remove from tracking dictionary (optional)
+                del future_to_metric[fut]
+
+            # Periodic status update (every ~60 seconds based on timeout)
+            current_time = time.time()
+            if current_time - last_status_time >= 60 or not pending_futures:
+                if pending_futures:
+                    pending_metrics = [future_to_metric[f] for f in pending_futures]
+                    logging.info(f"[Status] {len(futures) - len(pending_futures)}/{len(futures)} plots completed. Still pending: {pending_metrics}")
+                else:
+                    logging.info("[Status] All time series plots processed.")
+                last_status_time = current_time
 
 def main():
-    """Main function to run the visualization script."""
-    # Setup logging
+    """Main function to run the visualization script, with option to skip time series if already done."""
     setup_logging()
     logging.info("Starting the visualization script.")
+
+    # Marker file to indicate time series plots are done
+    timeseries_marker = Path('output') / 'timeseries_done.marker'
 
     try:
         # Load configuration
@@ -187,23 +299,37 @@ def main():
         logging.info("Loading data from Input/fake_data.csv.")
         data = data_loader.load_csv('Input/fake_data.csv')
         logging.info("Data loaded successfully.")
-        
+
         # Initialize visualizer
         logging.info("Initializing DataVisualizer.")
         visualizer = DataVisualizer(data)
-        
+
         # Create output directories
         create_output_directories(config)
-        
-        # Process all plots
+
+        # Decide whether to run time series plots
+        skip_timeseries = False
+        if timeseries_marker.exists():
+            user_input = input("Time series plots have already been generated. Skip time series and only run other visualizations? (y/n): ").strip().lower()
+            if user_input == 'y':
+                skip_timeseries = True
+
         plot_files_info = []
-        process_plots(visualizer, config, plot_files_info)
+        if not skip_timeseries:
+            process_plots(visualizer, config, plot_files_info)
+            # Write marker file to indicate time series are done
+            timeseries_marker.parent.mkdir(parents=True, exist_ok=True)
+            with open(timeseries_marker, 'w') as f:
+                f.write('done')
+        else:
+            logging.info("Skipping time series plot generation as per user request.")
 
         # Generate PNL Attribution visualization
         logging.info("Generating PNL Attribution visualization.")
         try:
             pnl_vis_file = create_pnl_visualization()
             logging.info(f"PNL Attribution visualization created successfully: {pnl_vis_file}")
+            plot_files_info.append({'strana_node': 'PNL', 'plot_type': 'pnl', 'metrics': '', 'output_file': pnl_vis_file})
         except Exception as e:
             logging.error(f"Error creating PNL Attribution visualization: {e}")
 
@@ -211,13 +337,13 @@ def main():
         HTMLGenerator.generate_index_html(plot_files_info, Path('output'))
 
         logging.info("Visualization script finished successfully.")
-        
+
     except Exception as e:
         logging.error(f"Error running visualization script: {e}")
         raise
 
     print("Starting main application...")
-    
+
     # Call the function from custom_plot_visualization.py
     print("Generating custom plots and updating dashboard...")
     try:

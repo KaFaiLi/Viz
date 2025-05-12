@@ -27,7 +27,7 @@ class VisualizationConfig:
                         'mother_metrics': [
                             'CredBpv', 'BASISSensiByCurrencyByPillar',
                             'FX', 'FXUSD', 'FXEUR', 'FXJPY',
-                            'FTQ', 'FTQglobJapan', 'FTQglobJapan1M',
+                            'FTQ', 'FTQglobJapan',
                         ],
                         'plot_types': ['bar']
                     },
@@ -35,7 +35,7 @@ class VisualizationConfig:
                         'mother_metrics': [
                             'SOVFuture', 'CredBpv', 'BASISSensiByCurrencyByPillar',
                             'FX', 'FXUSD', 'FXEUR', 'FXJPY',
-                            'FTQ', 'FTQglobJapan', 'FTQglobJapan1M',
+                            'FTQglobJapan', 'FTQglobJapan1M',
                         ],
                         'plot_types': ['time_series']
                     }
