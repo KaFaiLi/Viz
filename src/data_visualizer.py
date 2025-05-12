@@ -190,7 +190,7 @@ class DataVisualizer:
         strana_node: str,
         mother_metric: str,
         output_file: Optional[str] = None,
-        event_dates: Optional[List[datetime]] = None
+        event_dates: Optional[List[datetime]] = None  # New parameter for event dates
     ) -> go.Figure:
         """
         Create a time series plot with subplots for all metrics related to the mother metric.
@@ -236,46 +236,15 @@ class DataVisualizer:
         width = height * 2.5 # Allow width to scale more horizontally
         
         subplot_annotations = [] # Initialize list for annotations
-        
-        # Prepare shapes list for event date lines (add all at once)
-        shapes = []
-        if event_dates:
-            for idx, metric in enumerate(metrics, 1):
-                # Calculate row and column (1-based indexing)
-                row = (idx + 1) // 2
-                col = 2 if idx % 2 == 0 else 1
-                
-                # Get the x and y domain for this subplot
-                x_domain = fig.get_subplot(row=row, col=col).xaxis.domain
-                y_domain = fig.get_subplot(row=row, col=col).yaxis.domain
-                
-                for event_date in event_dates:
-                    if isinstance(event_date, datetime):
-                        # Add vertical line shape for this subplot
-                        shapes.append({
-                            'type': 'line',
-                            'xref': f'x{idx}',
-                            'yref': f'y{idx}',
-                            'x0': event_date,
-                            'y0': 0,
-                            'x1': event_date,
-                            'y1': 1,
-                            'yanchor': y_domain[0],
-                            'ysizemode': 'scaled',
-                            'line': {
-                                'color': 'darkgrey',
-                                'width': 1,
-                                'dash': 'dot'
-                            }
-                        })
+        all_event_line_shapes = [] # List to collect all event line shapes
 
         # Add time series for each metric in separate subplots
-        for idx, metric in enumerate(metrics, 1):
+        for idx, metric_item in enumerate(metrics, 1): # Renamed metric to metric_item to avoid conflict
             # Calculate row and column (1-based indexing)
             row = (idx + 1) // 2
             col = 2 if idx % 2 == 0 else 1
             
-            metric_data = plot_data[plot_data['consoMreMetricName'] == metric].copy()
+            metric_data = plot_data[plot_data['consoMreMetricName'] == metric_item].copy()
             # This sort ensures points within *this* trace are ordered, complementing the global sort above
             metric_data = metric_data.sort_values('Date')
             
@@ -284,7 +253,7 @@ class DataVisualizer:
                 go.Scatter(
                     x=metric_data['Date'],
                     y=metric_data['consoValue'],
-                    name=metric,
+                    name=metric_item,
                     mode='lines+markers',
                     showlegend=False
                 ),
@@ -325,38 +294,76 @@ class DataVisualizer:
                         row=row,
                         col=col
                     )
+            
+            # Collect event date line shapes if specified
+            if event_dates:
+                # Calculate the xref name for the current subplot
+                # Assuming 2 columns as per make_subplots call
+                num_columns_for_subplots = 2 
+                axis_idx = (row - 1) * num_columns_for_subplots + col
+                xref_name = f'x{axis_idx}' if axis_idx > 1 else 'x'
+
+                for event_date in event_dates:
+                    if isinstance(event_date, datetime): # Ensure it's a datetime object
+                        shape_dict = {
+                            'type': 'line',
+                            'xref': xref_name,
+                            'yref': 'paper', # Relative to the subplot's y-axis plotting area
+                            'x0': event_date.timestamp() * 1000, # Convert datetime to milliseconds
+                            'x1': event_date.timestamp() * 1000,
+                            'y0': 0, # Bottom of the subplot plotting area
+                            'y1': 1, # Top of the subplot plotting area
+                            'line': {
+                                'width': 1,
+                                'dash': 'dot',
+                                'color': 'darkgrey'
+                            }
+                        }
+                        all_event_line_shapes.append(shape_dict)
+                        # Optional: Add annotation for the event line (would also need to be collected)
+                        # ...
 
             # Add axis titles for each subplot
             fig.update_xaxes(title_text="Date", row=row, col=col)
             fig.update_yaxes(title_text="Value", row=row, col=col)
 
-            # Calculate annotation position using paper coordinates
+            # --- Calculate annotation position using paper coordinates --- 
+            # Get subplot domain boundaries (approximate)
             x_domain, y_domain = fig.get_subplot(row=row, col=col).xaxis.domain, fig.get_subplot(row=row, col=col).yaxis.domain
+
+            # Calculate center x position in paper coordinates
             x_pos = (x_domain[0] + x_domain[1]) / 2
-            y_pos = y_domain[1] + 0.02
-            
+
+            # Calculate y position slightly above the subplot in paper coordinates
+            y_pos = y_domain[1] + 0.02 # Adjust the offset (0.02) as needed 
+            # --- End annotation position calculation --- 
+
             # Add subplot title annotation
             subplot_annotations.append(dict(
-                text=f"<b>{metric}</b>",
-                xref="paper",
-                yref="paper",
-                x=x_pos,
-                y=y_pos,
+                text=f"<b>{metric_item}</b>", # Use metric_item here
+                xref="paper", # Reference the whole figure paper
+                yref="paper", # Reference the whole figure paper
+                x=x_pos, # Use calculated paper coordinate 
+                y=y_pos, # Use calculated paper coordinate
                 xanchor='center',
                 yanchor='bottom',
                 showarrow=False,
-                font=dict(size=14)
+                font=dict(size=14) # Adjust size as needed
             ))
         
-        # Update layout with all shapes and annotations at once
+        # Add all collected event line shapes to the figure's layout
+        if all_event_line_shapes:
+            existing_shapes = list(fig.layout.shapes) if fig.layout.shapes else []
+            fig.layout.shapes = tuple(existing_shapes + all_event_line_shapes)
+
+        # Update layout
         fig.update_layout(
             title=f"{strana_node} - {mother_metric} and Related Metrics Time Series",
             height=height,
             width=width,
             showlegend=False,
             template="plotly_white",
-            annotations=subplot_annotations,
-            shapes=shapes  # Add all shapes at once
+            annotations=subplot_annotations # Add the annotations here
         )
         
         if output_file:
