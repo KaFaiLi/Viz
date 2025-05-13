@@ -535,7 +535,7 @@ def run_all_custom_visualizations():
     # Set up output directories
     output_dir = os.path.join(workspace_root, "output")
     # Base directory for all custom plots
-    custom_plot_base_dir = os.path.join(output_dir, "Custom_Plots") # Base directory for CSV plots
+    custom_plot_base_dir = os.path.join(output_dir, "Custom plot") # Base directory for CSV plots
 
     # Ensure the base custom plot output directory exists
     os.makedirs(custom_plot_base_dir, exist_ok=True)

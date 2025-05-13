@@ -126,7 +126,8 @@ def process_plots(
                 # Define the specific dates for the bar plot
                 dates_for_bar_plot = [
                     datetime(2023, 3, 14),
-                    datetime(2023, 3, 16)
+                    datetime(2023, 3, 16),
+                    datetime(2023, 3, 18)
                 ]
                 create_bar_plot(
                     visualizer, strana_node, mother_metrics,
@@ -167,7 +168,15 @@ def create_bar_plot(
     # or the single date might be incorporated differently by visualizer if needed.
     # For now, the original filename logic for single/latest date is implicitly handled by visualizer.
 
-    output_filename = f'{strana_node}_{"_".join(mother_metrics)}_bar{date_suffix}.html'
+    # Simplified filename logic
+    if len(mother_metrics) == 1:
+        metrics_name_part = mother_metrics[0]  # Use the single metric name
+    elif len(mother_metrics) > 1:
+        metrics_name_part = "multiple_metrics" # Generic name for multiple metrics
+    else: # Should not happen based on current call structure in process_plots, but good to be defensive
+        metrics_name_part = "metrics" # Default if mother_metrics is unexpectedly empty
+
+    output_filename = f'{strana_node}_{metrics_name_part}_bar{date_suffix}.html'
     output_file_path = output_dir / output_filename
     
     logging.info(f"Creating grouped bar plot for {strana_node}, "

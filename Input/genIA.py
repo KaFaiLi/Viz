@@ -16,6 +16,13 @@ df = pd.DataFrame({
 # Set random seed for reproducibility
 np.random.seed(42)
 
+# Define mother level effect variables
+mother_vars = [
+    'Theta/FIN.DtD',
+    'NnM Effect.DtD',
+    'Market Effect.DtD'
+]
+
 # Define L1 effect variables (existing + two new ones)
 l1_vars = [
     'Commo Effect_L1.DtD',
@@ -29,6 +36,10 @@ l1_vars = [
 # Generate L1 effect columns
 for var in l1_vars:
     df[var] = np.random.normal(loc=0, scale=1000, size=n)
+
+# Generate mother level effect columns
+for var in mother_vars:
+    df[var] = np.random.normal(loc=0, scale=1000, size=n) # Using same scale as L1 for mother level
 
 # Define L2 effect variables (sub-components)
 l2_vars = [
@@ -45,7 +56,7 @@ for var in l2_vars:
     df[var] = np.random.normal(loc=0, scale=500, size=n)
 
 # Compute total of all effects
-sum_effects = df[l1_vars + l2_vars].sum(axis=1)
+sum_effects = df[mother_vars + l1_vars + l2_vars].sum(axis=1)
 
 # Generate delta based on sum direction
 delta_positive = np.random.uniform(0, 50, size=n)
