@@ -7,8 +7,8 @@ num_entries = 180
 start_date = datetime(2023, 1, 1)
 end_date = datetime(2025, 12, 31)
 maturities = [
-    "2-year JGB", "5-year JGB", "10-year JGB",
-    "20-year JGB", "30-year JGB", "40-year JGB"
+    "2-year", "5-year", "10-year",
+    "20-year", "30-year", "40-year"
 ]
 
 # Generate random dates and random maturities

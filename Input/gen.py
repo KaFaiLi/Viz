@@ -7,6 +7,8 @@ risk_metrics = [
     ('CREDIT DELTA', 'CredBpv10Y'),
     ('CREDIT DELTA', 'CredBpv3Y'),
     ('VAR', 'VaR'),
+    ('SVAR', 'SVaR'),
+    ('STTH', 'STTH'),
     ('FTQ', 'SOVFutureJapan'),
     ('BASIS DELTA', 'BASISSensiByCurrencyByPillar[EUR][1W]'),
     ('BASIS DELTA', 'BASISSensiByCurrencyByPillar[JPY][1W]'),
