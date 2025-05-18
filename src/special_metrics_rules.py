@@ -1,7 +1,7 @@
 # special rules for handling specific mother metrics
 special_metric_rules = {
     "VaR": {
-        "include_pattern": r"^(VaR|SVaR|STTHH)", # Include only VaR, SVaR, and STTHH
+        "include_pattern": r"^(VaR|SVaR|STTH)", # Include only VaR, SVaR, and STTHH
     },
     "FTQ": {
         "include_pattern": r"^FTQ(\d+[DWMY])?", # Include FTQ and sub-metrics like FTQ3M, FTQ1Y, etc.

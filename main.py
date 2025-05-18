@@ -338,7 +338,6 @@ def main():
         try:
             pnl_vis_file = create_pnl_visualization()
             logging.info(f"PNL Attribution visualization created successfully: {pnl_vis_file}")
-            plot_files_info.append({'strana_node': 'PNL', 'plot_type': 'pnl', 'metrics': '', 'output_file': pnl_vis_file})
         except Exception as e:
             logging.error(f"Error creating PNL Attribution visualization: {e}")
 

@@ -90,34 +90,45 @@ class DataVisualizer:
         # Get all metrics for this stranaNode
         all_metrics = self.data[self.data['stranaNodeName'] == strana_node]['rmRiskMetricName'].unique()
         
-        # Find all metrics that contain the mother metric (case-insensitive)
-        base_related_metrics = [m for m in all_metrics if mother_metric.lower() in m.lower()]
+        related_metrics: List[str] = []
 
-        # Apply special filtering rules if they exist for this mother_metric
-        related_metrics = base_related_metrics
         if mother_metric in special_metric_rules:
             rules = special_metric_rules[mother_metric]
             include_pattern = rules.get("include_pattern")
             exclude_pattern = rules.get("exclude_pattern")
 
             if include_pattern:
-                related_metrics = [m for m in related_metrics if re.search(include_pattern, m, re.IGNORECASE)]
-            if exclude_pattern:
-                related_metrics = [m for m in related_metrics if not re.search(exclude_pattern, m, re.IGNORECASE)]
+                # If include_pattern is specified, it defines the set directly from all_metrics.
+                # This allows patterns to include metrics that don't necessarily contain the mother_metric string itself (e.g., STTHH for VaR).
+                related_metrics = [m for m in all_metrics if re.search(include_pattern, m, re.IGNORECASE)]
+                
+                # Then, apply exclude_pattern to this specifically selected set
+                if exclude_pattern:
+                    related_metrics = [m for m in related_metrics if not re.search(exclude_pattern, m, re.IGNORECASE)]
+            else:
+                # No include_pattern, but other rules (like exclude_pattern only) might exist.
+                # Default to finding metrics that contain the mother_metric string (case-insensitive).
+                related_metrics = [m for m in all_metrics if mother_metric.lower() in m.lower()]
+                if exclude_pattern: # Apply exclude_pattern if it exists without an include_pattern
+                    related_metrics = [m for m in related_metrics if not re.search(exclude_pattern, m, re.IGNORECASE)]
+        else:
+            # No special rules at all for this mother_metric.
+            # Default to finding metrics that contain the mother_metric string (case-insensitive).
+            related_metrics = [m for m in all_metrics if mother_metric.lower() in m.lower()]
 
         # Sort metrics by maturity/currency
         def sort_key(metric):
             maturity = self._extract_maturity(metric)
             currency = self._extract_currency(metric)
             
-            # Put exact matches (ignoring case) first
+            # Put exact matches (ignoring case) of the mother_metric first
             if metric.lower() == mother_metric.lower():
                 return (0, '')
             elif maturity:  # Then sort by maturity
                 return (1, self._convert_maturity_to_months(maturity))
             elif currency:  # Then by currency
                 return (2, currency)
-            return (3, metric)  # Other cases
+            return (3, metric)  # Other cases (alphabetical for metrics without specific components or after primary sorting)
         
         return sorted(related_metrics, key=sort_key)
     

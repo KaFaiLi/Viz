@@ -1,61 +1,82 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
 import random
-import platform
+from datetime import datetime, timedelta
 
-# Configurations
-products = ["bond", "future", "irdswap"]
+# Configuration
+products = ["bond", "future", "irdswap", "repo"]
 pillars = ["100Y", "10Y", "15Y", "1M", "1W", "1Y", "20Y", "25Y", "2Y", "30Y", "3M", "40Y", "50Y"]
 start_date = datetime(2023, 1, 1)
 end_date = datetime(2025, 12, 31)
+n_samples = 2000  # total number of rows to generate
 
-# Choose correct date format depending on OS
-date_format = "%#m/%#d/%Y" if platform.system() == "Windows" else "%-m/%-d/%Y"
+# Helper to generate a random date string in MM/DD/YYYY format
+def random_date(start, end):
+    return (start + timedelta(days=random.randint(0, (end - start).days))).strftime("%m/%d/%Y")
 
-# Create unique product-pillar combinations
-combinations = [(p, pi) for p in products for pi in pillars]
-max_entries = len(combinations)
-
-# Generate unique pricing dates
-def generate_unique_dates(n):
-    date_range = (end_date - start_date).days
-    selected_days = random.sample(range(date_range), n)
-    return [start_date + timedelta(days=day) for day in selected_days]
-
-# Generate dataset
+# Generate base rows, one per pillar to ensure coverage
 rows = []
-unique_dates = generate_unique_dates(max_entries)
 
-for i, (product, pillar) in enumerate(combinations):
-    pricingdate = unique_dates[i].strftime(date_format)
-    validated_value = round(np.random.uniform(0.0, 100.0), 4)
+for pillar in pillars:
+    if pillar == "100Y":
+        product = "bond"
+    elif pillar == "10Y":
+        product = "future"
+    else:
+        product = random.choice(products)
 
-    # Determine Outlier
-    outlier = None
-    if product != "irdswap":
-        outlier = np.random.choice([0, 1], p=[0.9, 0.1])  # 10% chance of being an outlier
-
-    # Determine is Auction Date
-    is_auction = np.random.choice([0, 1], p=[0.5, 0.5])  # 50% chance
+    pricingdate = random_date(start_date, end_date)
+    cv_value = round(random.uniform(0, 1), 4)
+    outlier = None if product == "irdswap" else (1 if random.random() < 0.1 else 0)
+    auction_date = 1 if random.random() < 0.5 else 0
 
     rows.append({
         "Product": product,
         "Projected Pillar": pillar,
         "pricingdate": pricingdate,
-        "Validated Value Projected CV": validated_value,
+        "Validated Value Projected CV": cv_value,
         "Outlier": outlier,
-        "Is Auction Date": is_auction
+        "is Auction Date": auction_date
     })
 
-# Create DataFrame
-df = pd.DataFrame(rows)
+# Fill remaining rows to reach n_samples
+while len(rows) < n_samples:
+    pillar = random.choice(pillars)
 
-# Shuffle rows
+    if pillar == "100Y":
+        product = "bond"
+    elif pillar == "10Y":
+        product = "future"
+    else:
+        product = random.choice(products)
+
+    pricingdate = random_date(start_date, end_date)
+    cv_value = round(random.uniform(0, 1), 4)
+    outlier = None if product == "irdswap" else (1 if random.random() < 0.1 else 0)
+    auction_date = 1 if random.random() < 0.5 else 0
+
+    rows.append({
+        "Product": product,
+        "Projected Pillar": pillar,
+        "pricingdate": pricingdate,
+        "Validated Value Projected CV": cv_value,
+        "Outlier": outlier,
+        "Is Auction Date": auction_date
+    })
+
+# Build and shuffle DataFrame
+df = pd.DataFrame(rows)
 df = df.sample(frac=1).reset_index(drop=True)
 
-# Display head
-print(df.head())
+# Optional: Validate rules
+assert all(df[df["Projected Pillar"] == "100Y"]["Product"] == "bond")
+assert all(df[df["Projected Pillar"] == "10Y"]["Product"] == "future")
 
-# Optional: Export to CSV
-df.to_csv("Updated_IR_Delta.csv", index=False)
+# Preview
+print(df.head(20))
+
+# Optional: Save to CSV
+# df.to_csv("synthetic_dataset.csv", index=False)
+
+
+df.to_csv("input/Updated_IR_Delta.csv", index=False)
