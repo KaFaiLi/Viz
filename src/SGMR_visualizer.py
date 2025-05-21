@@ -28,7 +28,7 @@ class DataVisualizer:
     def _extract_currency(self, metric_name: str) -> Optional[str]:
         """Extract currency from metric name if present."""
         # Match patterns like [USD], [EUR], [JPY]
-        currency_pattern = r'\[([A-Z                                   ]{3})\]'
+        currency_pattern = r'\[([A-Z]{3})\]'
         match = re.search(currency_pattern, metric_name)
         return match.group(1) if match else None
     
@@ -174,9 +174,9 @@ class DataVisualizer:
             textposition='auto',
         ))
         
-        # Calculate height based on number of metrics
-        height = max(800, 150 * len(metrics)) # Increased base height and factor
-        width = height * 2.5 # Allow width to scale more horizontally
+        # Fixed height and width
+        fixed_height = 1000
+        fixed_width = 1800
         
         # Update layout
         fig.update_layout(
@@ -185,10 +185,12 @@ class DataVisualizer:
             yaxis_title="Value",
             showlegend=False,
             template="plotly_white",
-            xaxis_tickangle=-45,
-            height=height,
-            width=width,
-            margin=dict(t=100, b=150)  # Increase bottom margin for long x-axis labels
+            xaxis_tickangle=-45, # Rotated labels to prevent overlap
+            height=fixed_height,
+            width=fixed_width,
+            margin=dict(t=100, b=150, l=70, r=70),  # Adjusted margins, esp. bottom for rotated labels
+            xaxis_automargin=True, # Allow x-axis to use more margin if needed for labels
+            yaxis_automargin=True
         )
         
         if output_file:
@@ -206,16 +208,28 @@ class DataVisualizer:
         Returns:
             dict: Configuration for num_rows, vertical_spacing, height, and width.
         """
-        if num_metrics == 0: # Should ideally be caught before calling this
-            return {'num_rows': 1, 'vertical_spacing': 0.2, 'height': 600, 'width': 1200}
+        fixed_height = 1000
+        fixed_width = 1800
+
+        if num_metrics == 0:
+            return {'num_rows': 1, 'vertical_spacing': 0.2, 'height': fixed_height, 'width': fixed_width}
 
         num_rows = (num_metrics + 1) // 2
+        # Adjust vertical spacing: if num_rows is 1, spacing is not applicable between subplots.
+        # If num_rows > 1, calculate spacing. Ensure it's not too small.
+        # Max spacing can be 0.5 (50% of subplot height), min 0.05 (5%).
+        # Total height for subplots themselves (excluding spacing) must be positive.
+        # Let V be vertical_spacing (as a fraction of subplot height).
+        # Total height = num_rows * subplot_height + (num_rows - 1) * V * subplot_height
+        # For simplicity here, plotly's vertical_spacing is a fraction of the total available height for subplots.
+        # We'll keep the existing logic but ensure it adapts to the fixed height.
+        # The actual height of each subplot will shrink if num_rows is large.
         vertical_spacing = min(0.2, 0.8 / (num_rows - 1) if num_rows > 1 else 0.2)
-        # Increased base height per row and minimum
-        height = max(450 * num_rows, 600)
-        # Allow width to scale more horizontally
-        width = height * 2.5
-        return {'num_rows': num_rows, 'vertical_spacing': vertical_spacing, 'height': height, 'width': width}
+        if num_rows > 1 and fixed_height / num_rows < 100: # If subplots get too small, reduce spacing
+             vertical_spacing = max(0.05, 0.4 / (num_rows -1))
+
+
+        return {'num_rows': num_rows, 'vertical_spacing': vertical_spacing, 'height': fixed_height, 'width': fixed_width}
 
     def _add_time_series_subplot_elements(
         self,
@@ -337,8 +351,8 @@ class DataVisualizer:
             fig = go.Figure()
             fig.update_layout(
                 title=f"{strana_node} - {mother_metric} - No Metrics Found",
-                height=600, # Default height
-                width=1200  # Default width
+                height=1000, # Fixed height
+                width=1800  # Fixed width
             )
             if output_file:
                 fig.write_html(output_file)
@@ -351,7 +365,7 @@ class DataVisualizer:
         relevant_plot_data = self.data[mask].copy()
         relevant_plot_data.sort_values('consoValueDate', inplace=True)
 
-        # Calculate layout parameters
+        # Calculate layout parameters using fixed height and width
         layout_config = self._prepare_time_series_layout_config(len(metrics))
         
         # Create figure with subplots
@@ -359,8 +373,8 @@ class DataVisualizer:
             rows=layout_config['num_rows'],
             cols=2, # Fixed at 2 columns
             vertical_spacing=layout_config['vertical_spacing'],
-            horizontal_spacing=0.15, # As per original
-            shared_xaxes=False     # Independent x-axes, as per original
+            horizontal_spacing=0.1, # Reduced horizontal spacing slightly
+            shared_xaxes=False     # Independent x-axes
         )
         
         subplot_title_annotations = [] # Initialize list for annotations
@@ -371,18 +385,14 @@ class DataVisualizer:
             row = (idx + 1) // 2
             col = 2 if idx % 2 == 0 else 1
             
-            # Get data for the current metric from the pre-filtered and pre-sorted DataFrame.
-            # No further sorting or copying needed here if metric_data_subset is only read.
             metric_data_subset = relevant_plot_data[relevant_plot_data['consoMreMetricName'] == current_metric_name]
             
             has_data = not metric_data_subset.empty
 
-            # Add traces, limit lines, event lines, and configure axes for the subplot
             self._add_time_series_subplot_elements(
                 fig, metric_data_subset, current_metric_name, row, col, event_dates
             )
             
-            # Generate and collect subplot title annotation
             annotation = self._generate_subplot_title_annotation(
                 fig, current_metric_name, row, col, has_data
             )
@@ -391,13 +401,20 @@ class DataVisualizer:
         # Update overall figure layout
         fig.update_layout(
             title=f"{strana_node} - {mother_metric} and Related Metrics Time Series",
-            height=layout_config['height'],
-            width=layout_config['width'],
-            showlegend=False, # As per original
-            template="plotly_white", # As per original
-            annotations=subplot_title_annotations # Add all subplot titles at once
+            height=layout_config['height'], # This will be 1000
+            width=layout_config['width'],   # This will be 1800
+            showlegend=False,
+            template="plotly_white",
+            annotations=subplot_title_annotations,
+            margin=dict(t=100, b=70, l=70, r=70) # Adjusted margins
         )
         
+        # Ensure axes within subplots use automargin for labels
+        for i in range(1, layout_config['num_rows'] + 1):
+            for j in range(1, 3): # 2 columns
+                fig.update_xaxes(row=i, col=j, automargin=True)
+                fig.update_yaxes(row=i, col=j, automargin=True)
+
         if output_file:
             fig.write_html(output_file)
         
@@ -424,15 +441,17 @@ class DataVisualizer:
                 Specific date or list of dates to plot. Defaults to None (latest for each subplot).
             output_file (str, optional): If provided, save the plot to this file
         """
-        # Calculate number of rows needed for 2 columns
-        num_rows = (len(mother_metrics) + 1) // 2  # Round up division
-        
-        # Calculate dynamic vertical spacing based on number of rows
-        vertical_spacing = min(0.2, 0.8 / (num_rows - 1) if num_rows > 1 else 0.2)
+        fixed_height = 1000
+        fixed_width = 1800
 
-        # Base height of 450px per row, with additional space for title and margins
-        height = max(450 * num_rows + 150, 700)  # Minimum height of 700px
-        width = height * 1.2 # Further reduced width multiplier to fit two columns
+        # Calculate number of rows needed for 2 columns
+        num_rows = (len(mother_metrics) + 1) // 2 if mother_metrics else 1
+        
+        # Adjust vertical spacing, similar to _prepare_time_series_layout_config
+        vertical_spacing = min(0.2, 0.8 / (num_rows - 1) if num_rows > 1 else 0.2)
+        if num_rows > 1 and fixed_height / num_rows < 150: # If subplots get too small, reduce spacing
+             vertical_spacing = max(0.05, 0.4 / (num_rows -1))
+        horizontal_spacing = 0.1 # Reduced horizontal spacing
 
         dates_provided_by_user = False
         dates_for_plot_generation: List[datetime] = []
@@ -442,41 +461,49 @@ class DataVisualizer:
             dates_provided_by_user = True
         elif isinstance(selected_dates, list):
             if all(isinstance(d, datetime) for d in selected_dates):
-                if selected_dates:  # Ensure list is not empty
+                if selected_dates:
                     dates_for_plot_generation = sorted(list(set(selected_dates)))
                     dates_provided_by_user = True
                 else:
                     logging.warning(f"Empty list of dates provided for {strana_node}. Generating empty plot.")
                     fig = go.Figure()
-                    fig.update_layout(title=f"{strana_node} - No dates specified for plotting", height=height, width=width)
+                    fig.update_layout(title=f"{strana_node} - No dates specified for plotting", height=fixed_height, width=fixed_width)
                     if output_file:
                         fig.write_html(output_file)
                     return fig
             else:
                 logging.error(f"Invalid list contents for selected_dates in create_grouped_bar_plots for {strana_node}. Expected list of datetimes. Generating empty plot.")
                 fig = go.Figure()
-                fig.update_layout(title=f"{strana_node} - Error: Invalid date input format", height=height, width=width)
+                fig.update_layout(title=f"{strana_node} - Error: Invalid date input format", height=fixed_height, width=fixed_width)
                 if output_file:
                     fig.write_html(output_file)
                 return fig
-        elif selected_dates is not None: # Invalid type other than None, datetime, or list
+        elif selected_dates is not None:
             logging.error(f"Invalid type for selected_dates in create_grouped_bar_plots for {strana_node}. Expected datetime, list of datetimes, or None. Generating empty plot.")
             fig = go.Figure()
-            fig.update_layout(title=f"{strana_node} - Error: Invalid date input type", height=height, width=width)
+            fig.update_layout(title=f"{strana_node} - Error: Invalid date input type", height=fixed_height, width=fixed_width)
             if output_file:
                 fig.write_html(output_file)
             return fig
         
+        if not mother_metrics:
+            logging.warning(f"No mother metrics provided for {strana_node}. Generating empty plot.")
+            fig = go.Figure()
+            fig.update_layout(title=f"{strana_node} - No Mother Metrics Specified", height=fixed_height, width=fixed_width)
+            if output_file:
+                fig.write_html(output_file)
+            return fig
+
         fig = make_subplots(
             rows=num_rows,
             cols=2,
             subplot_titles=[f"{metric}" for metric in mother_metrics],
             vertical_spacing=vertical_spacing,
-            horizontal_spacing=0.15
+            horizontal_spacing=horizontal_spacing
         )
         
-        traces_added = False # Flag to check if any data was plotted
-        dates_already_in_legend = set() # Keep track of dates added to legend
+        traces_added = False
+        dates_already_in_legend = set()
 
         for idx, mother_metric in enumerate(mother_metrics, 1):
             row = (idx + 1) // 2
@@ -491,6 +518,8 @@ class DataVisualizer:
 
             if current_mother_metric_data.empty:
                 logging.info(f"No data available for mother metric {mother_metric} in {strana_node} before date filtering.")
+                # Update subplot title to indicate no data
+                fig.layout.annotations[idx-1].text = f"{mother_metric}<br>(No Data)"
                 continue
 
             actual_dates_this_subplot: List[datetime] = []
@@ -499,16 +528,21 @@ class DataVisualizer:
             if dates_provided_by_user:
                 actual_dates_this_subplot = dates_for_plot_generation
                 data_for_bars_this_subplot = current_mother_metric_data[current_mother_metric_data['consoValueDate'].isin(actual_dates_this_subplot)]
-            else: # No dates provided by user, use latest for this subplot
+            else: 
                 latest_date_for_subplot = current_mother_metric_data['consoValueDate'].max()
+                if pd.isna(latest_date_for_subplot): # Handle case where no dates exist after filtering
+                    logging.info(f"No valid latest date for mother metric {mother_metric} in {strana_node}.")
+                    fig.layout.annotations[idx-1].text = f"{mother_metric}<br>(No Data)"
+                    continue
                 actual_dates_this_subplot = [latest_date_for_subplot]
                 data_for_bars_this_subplot = current_mother_metric_data[current_mother_metric_data['consoValueDate'] == latest_date_for_subplot]
 
             if not actual_dates_this_subplot or data_for_bars_this_subplot.empty:
                 logging.info(f"No data for subplot {mother_metric} for determined dates: {actual_dates_this_subplot}")
+                fig.layout.annotations[idx-1].text = f"{mother_metric}<br>(No Data for Selected Dates)"
                 continue
             
-            actual_dates_this_subplot.sort() # Ensure consistent order for traces
+            actual_dates_this_subplot.sort() 
 
             for plot_date in actual_dates_this_subplot:
                 date_specific_data = data_for_bars_this_subplot[data_for_bars_this_subplot['consoValueDate'] == plot_date]
@@ -523,7 +557,7 @@ class DataVisualizer:
                 for m_name in metrics:
                     value = value_map.get(m_name, None)
                     y_values.append(value)
-                    text_values.append(f"{value:.2f}" if pd.notna(value) else "") # Handle NaN for text
+                    text_values.append(f"{value:.2f}" if pd.notna(value) else "")
 
                 current_date_str = plot_date.strftime('%Y-%m-%d')
                 is_first_occurrence_for_legend = current_date_str not in dates_already_in_legend
@@ -534,8 +568,8 @@ class DataVisualizer:
                         y=y_values,
                         text=text_values,
                         textposition='auto',
-                        name=current_date_str, # Name for legend item
-                        legendgroup=current_date_str, # Group traces by date
+                        name=current_date_str, 
+                        legendgroup=current_date_str, 
                         showlegend=dates_provided_by_user and is_first_occurrence_for_legend
                     ),
                     row=row,
@@ -546,28 +580,28 @@ class DataVisualizer:
                     dates_already_in_legend.add(current_date_str)
             
             fig.update_xaxes(title_text=None, row=row, col=col, tickangle=-90, automargin=True)
-            fig.update_yaxes(title_text="Value", row=row, col=col)
+            fig.update_yaxes(title_text="Value", row=row, col=col, automargin=True)
         
         title_date_str = "Latest Available Data"
         if dates_provided_by_user:
             if dates_for_plot_generation:
                 title_date_str_parts = [d.strftime('%Y-%m-%d') for d in dates_for_plot_generation]
                 title_date_str = ", ".join(title_date_str_parts)
-                if len(title_date_str) > 40: # Truncate if too long for title
+                if len(title_date_str) > 40: 
                     title_date_str = f"{len(title_date_str_parts)} Selected Dates"
-            else: # Should have been caught by empty list check earlier
+            else: 
                  title_date_str = "No Dates Specified"
         elif not traces_added:
             title_date_str = "No Data Available"
             
         fig.update_layout(
-            title=f"{strana_node} - Bar Plots ({title_date_str})",
-            height=height,
-            width=width,
+            title=f"{strana_node} - Grouped Bar Plots ({title_date_str})",
+            height=fixed_height,
+            width=fixed_width,
             barmode='group',
-            showlegend=dates_provided_by_user and len(dates_for_plot_generation) > 0,
+            showlegend=dates_provided_by_user and len(dates_already_in_legend) > 0, # Show legend only if dates were given and at least one was plotted
             template="plotly_white",
-            margin=dict(t=100, b=150, l=50, r=50)
+            margin=dict(t=100, b=100, l=70, r=70) # Adjusted margins
         )
         
         if output_file:
